@@ -31,7 +31,7 @@ handle_process_condition_command()
 {
 	gcs_send_text_fmt(PSTR("Executing command ID #%i"),next_nonnav_command.id);
 	switch(next_nonnav_command.id){
-
+					
 		case MAV_CMD_CONDITION_DELAY:
 			do_wait_delay();
 			break;
@@ -135,7 +135,8 @@ static void handle_no_commands()
 static bool verify_nav_command()	// Returns true if command complete
 {
 	switch(nav_command_ID) {
-
+		case 0:
+			control_mode 	= MANUAL;
 		case MAV_CMD_NAV_TAKEOFF:
 			return verify_takeoff();
 
