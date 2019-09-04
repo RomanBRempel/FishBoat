@@ -174,9 +174,9 @@ void init_home()
 
 static void restart_nav()
 {  
-    g.pidSpeedThrottle.reset_I();
-    prev_WP = current_loc;
-    nav_command_ID = NO_COMMAND;
-    nav_command_index = 0;
-    process_next_command();
+//    g.pidSpeedThrottle.reset_I();
+//    prev_WP = current_loc;
+//    nav_command_ID = NO_COMMAND;
+//    nav_command_index = 0;
+//    process_next_command();
 }
