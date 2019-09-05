@@ -128,8 +128,8 @@ static void handle_process_do_command()
 static void exit_mission()
 {
     if (control_mode == AUTO) {
-        gcs_send_text_fmt(PSTR("No commands. Can't set AUTO - setting MANUAL"));
-        set_mode(MANUAL);
+        gcs_send_text_fmt(PSTR("No commands. Can't set AUTO - setting HOLD"));
+        set_mode(HOLD);
     }
 =======
 static void handle_no_commands()
@@ -422,6 +422,7 @@ static void do_repeat_relay()
     if (should_log(MASK_LOG_CAMERA)) {
         DataFlash.Log_Write_Camera(ahrs, gps, current_loc);
     }
+<<<<<<< HEAD
 =======
 	event_id 		= RELAY_TOGGLE;
 	event_timer 	= 0;
@@ -442,3 +443,6 @@ static void do_take_picture()
 #endif
 >>>>>>> parent of f0caff2... ver 2.49 - cleare
 }
+=======
+}
+>>>>>>> parent of a19507c... aftert mision - manual
