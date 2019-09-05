@@ -199,6 +199,9 @@ static bool verify_nav_wp(const AP_Mission::Mission_Command& cmd)
         gcs_send_text_fmt(PSTR("Reached Waypoint #%i dist %um"),
                           (unsigned)cmd.index,
                           (unsigned)get_distance(current_loc, next_WP));
+                          prev_WP = current_loc;
+	control_mode 	= RTL;
+	next_WP = home;
         return true;
     }
 
@@ -207,6 +210,9 @@ static bool verify_nav_wp(const AP_Mission::Mission_Command& cmd)
         gcs_send_text_fmt(PSTR("Passed Waypoint #%i dist %um"),
                           (unsigned)cmd.index,
                           (unsigned)get_distance(current_loc, next_WP));
+                          prev_WP = current_loc;
+	control_mode 	= RTL;
+	next_WP = home;
         return true;
     }
 
