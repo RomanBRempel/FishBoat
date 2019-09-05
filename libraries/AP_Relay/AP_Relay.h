@@ -15,8 +15,6 @@
 
 #include <AP_Param.h>
 
-#define AP_RELAY_NUM_RELAYS 4
-
 /// @class	AP_Relay
 /// @brief	Class to manage the APM relay
 class AP_Relay {
@@ -27,22 +25,18 @@ public:
     void        init();
 
     // activate the relay
-    void        on(uint8_t relay);
+    void        on();
 
     // de-activate the relay
-    void        off(uint8_t relay);
-
-    // see if the relay is enabled
-    bool        enabled(uint8_t relay) { return relay < AP_RELAY_NUM_RELAYS && _pin[relay] != -1; }
+    void        off();
 
     // toggle the relay status
-    void        toggle(uint8_t relay);
+    void        toggle();
 
     static const struct AP_Param::GroupInfo        var_info[];
 
 private:
-    AP_Int8 _pin[AP_RELAY_NUM_RELAYS];
-    AP_Int8 _default;
+    AP_Int8 _pin;
 };
 
 #endif /* AP_RELAY_H_ */

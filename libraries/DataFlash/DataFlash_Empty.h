@@ -13,6 +13,7 @@ class DataFlash_Empty : public DataFlash_Block
 {
 private:
     //Methods
+    uint8_t           BufferRead (uint8_t BufferNum, uint16_t IntPageAdr);
     void              BufferWrite (uint8_t BufferNum, uint16_t IntPageAdr, uint8_t Data);
     void              BufferToPage (uint8_t BufferNum, uint16_t PageAdr, uint8_t wait);
     void              PageToBuffer(uint8_t BufferNum, uint16_t PageAdr);
@@ -30,7 +31,7 @@ private:
     bool BlockRead(uint8_t BufferNum, uint16_t IntPageAdr, void *pBuffer, uint16_t size);
 
 public:
-    void        Init(const struct LogStructure *structure, uint8_t num_types);
+    void        Init();
     void        ReadManufacturerID();
     bool        CardInserted();
 };

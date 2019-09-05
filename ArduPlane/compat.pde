@@ -1,4 +1,9 @@
 
+static void delay(uint32_t ms)
+{
+    hal.scheduler->delay(ms);
+}
+
 static void mavlink_delay(uint32_t ms)
 {
     hal.scheduler->delay(ms);

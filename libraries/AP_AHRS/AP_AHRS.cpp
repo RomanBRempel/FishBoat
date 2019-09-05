@@ -18,10 +18,6 @@
 #include <AP_HAL.h>
 extern const AP_HAL::HAL& hal;
 
-#if AHRS_EKF_USE_ALWAYS
-const int8_t AP_AHRS::_ekf_use;
-#endif
-
 // table of user settable parameters
 const AP_Param::GroupInfo AP_AHRS::var_info[] PROGMEM = {
 	// index 0 and 1 are for old parameters that are no longer not used
@@ -66,26 +62,23 @@ const AP_Param::GroupInfo AP_AHRS::var_info[] PROGMEM = {
 
     // @Param: TRIM_X
     // @DisplayName: AHRS Trim Roll
-    // @Description: Compensates for the roll angle difference between the control board and the frame. Positive values make the vehicle roll right.
+    // @Description: Compensates for the roll angle difference between the control board and the frame
     // @Units: Radians
-    // @Range: -0.1745 +0.1745
-    // @Increment: 0.01
-    // @User: User
+    // @Range: -10 10
+    // @User: Advanced
 
     // @Param: TRIM_Y
     // @DisplayName: AHRS Trim Pitch
-    // @Description: Compensates for the pitch angle difference between the control board and the frame. Positive values make the vehicle pitch up/back.
+    // @Description: Compensates for the pitch angle difference between the control board and the frame
     // @Units: Radians
-    // @Range: -0.1745 +0.1745
-    // @Increment: 0.01
-    // @User: User
+    // @Range: -10 10
+    // @User: Advanced
 
     // @Param: TRIM_Z
     // @DisplayName: AHRS Trim Yaw
     // @Description: Not Used
     // @Units: Radians
-    // @Range: -0.1745 +0.1745
-    // @Increment: 0.01
+    // @Range: -10 10
     // @User: Advanced
     AP_GROUPINFO("TRIM", 8, AP_AHRS, _trim, 0),
 
@@ -112,30 +105,26 @@ const AP_Param::GroupInfo AP_AHRS::var_info[] PROGMEM = {
     // @User: Advanced
     AP_GROUPINFO("GPS_MINSATS", 11, AP_AHRS, _gps_minsats, 6),
 
-    // NOTE: index 12 was for GPS_DELAY, but now removed, fixed delay
-    // of 1 was found to be the best choice
-
-#if AP_AHRS_NAVEKF_AVAILABLE && !AHRS_EKF_USE_ALWAYS
-    // @Param: EKF_USE
-    // @DisplayName: Use NavEKF Kalman filter for attitude and position estimation
-    // @Description: This controls whether the NavEKF Kalman filter is used for attitude and position estimation and whether fallback to the DCM algorithm is allowed
-    // @Values: 0:Disabled,1:Enabled, 2:Enabled - No Fallback
+    // @Param: GPS_DELAY
+    // @DisplayName: AHRS GPS delay steps
+    // @Description: number of GPS samples to delay accels for synchronisation with the GPS velocity data
+    // @Range: 0 5
+    // @Increment: 1
     // @User: Advanced
-    AP_GROUPINFO("EKF_USE",  13, AP_AHRS, _ekf_use, AHRS_EKF_USE_DEFAULT),
-#endif
+    AP_GROUPINFO("GPS_DELAY", 12, AP_AHRS, _gps_delay, 2),
 
     AP_GROUPEND
 };
 
 // return airspeed estimate if available
-bool AP_AHRS::airspeed_estimate(float *airspeed_ret) const
+bool AP_AHRS::airspeed_estimate(float *airspeed_ret)
 {
-	if (airspeed_sensor_enabled()) {
+	if (_airspeed && _airspeed->use()) {
 		*airspeed_ret = _airspeed->get_airspeed();
-		if (_wind_max > 0 && _gps.status() >= AP_GPS::GPS_OK_FIX_2D) {
+		if (_wind_max > 0 && _gps && _gps->status() >= GPS::GPS_OK_FIX_2D) {
                     // constrain the airspeed by the ground speed
                     // and AHRS_WIND_MAX
-                    float gnd_speed = _gps.ground_speed();
+                    float gnd_speed = _gps->ground_speed_cm*0.01f;
                     float true_airspeed = *airspeed_ret * get_EAS2TAS();
                     true_airspeed = constrain_float(true_airspeed,
                                                     gnd_speed - _wind_max, 
@@ -182,7 +171,7 @@ Vector2f AP_AHRS::groundspeed_vector(void)
     Vector2f gndVelGPS;
     float airspeed;
     bool gotAirspeed = airspeed_estimate_true(&airspeed);
-    bool gotGPS = (_gps.status() >= AP_GPS::GPS_OK_FIX_2D);
+    bool gotGPS = (_gps && _gps->status() >= GPS::GPS_OK_FIX_2D);
     if (gotAirspeed) {
 	    Vector3f wind = wind_estimate();
 	    Vector2f wind2d = Vector2f(wind.x, wind.y);
@@ -192,8 +181,8 @@ Vector2f AP_AHRS::groundspeed_vector(void)
     
     // Generate estimate of ground speed vector using GPS
     if (gotGPS) {
-        float cog = radians(_gps.ground_course_cd()*0.01f);
-        gndVelGPS = Vector2f(cosf(cog), sinf(cog)) * _gps.ground_speed();
+	    float cog = radians(_gps->ground_course_cd*0.01f);
+	    gndVelGPS = Vector2f(cosf(cog), sinf(cog)) * _gps->ground_speed_cm * 0.01f;
     }
     // If both ADS and GPS data is available, apply a complementary filter
     if (gotAirspeed && gotGPS) {
@@ -227,61 +216,22 @@ Vector2f AP_AHRS::groundspeed_vector(void)
     return Vector2f(0.0f, 0.0f);
 }
 
-// update_trig - recalculates _cos_roll, _cos_pitch, etc based on latest attitude
-//      should be called after _dcm_matrix is updated
-void AP_AHRS::update_trig(void)
+/*
+  get position projected by groundspeed and heading
+ */
+bool AP_AHRS::get_projected_position(struct Location &loc)
 {
-    Vector2f yaw_vector;
-    const Matrix3f &temp = get_dcm_matrix();
-
-    // sin_yaw, cos_yaw
-    yaw_vector.x = temp.a.x;
-    yaw_vector.y = temp.b.x;
-    yaw_vector.normalize();
-    _sin_yaw = constrain_float(yaw_vector.y, -1.0, 1.0);
-    _cos_yaw = constrain_float(yaw_vector.x, -1.0, 1.0);
-
-    // cos_roll, cos_pitch
-    float cx2 = temp.c.x * temp.c.x;
-    if (cx2 >= 1.0f) {
-        _cos_pitch = 0;
-        _cos_roll = 1.0f;
-    } else {
-        _cos_pitch = safe_sqrt(1 - cx2);
-        _cos_roll = temp.c.z / _cos_pitch;
-    }
-    _cos_pitch = constrain_float(_cos_pitch, 0, 1.0);
-    _cos_roll = constrain_float(_cos_roll, -1.0, 1.0); // this relies on constrain_float() of infinity doing the right thing,which it does do in avr-libc
-
-    // sin_roll, sin_pitch
-    _sin_pitch = -temp.c.x;
-    _sin_roll = temp.c.y / _cos_pitch;
-
-    // sanity checks
-    if (yaw_vector.is_inf() || yaw_vector.is_nan()) {
-        yaw_vector.x = 0.0f;
-        yaw_vector.y = 0.0f;
-        _sin_yaw = 0.0f;
-        _cos_yaw = 1.0f;
-    }
-
-    if (isinf(_cos_roll) || isnan(_cos_roll)) {
-        _cos_roll = cosf(roll);
-    }
-
-    if (isinf(_sin_roll) || isnan(_sin_roll)) {
-        _sin_roll = sinf(roll);
-    }
+        if (!get_position(loc)) {
+		return false;
+        }
+        location_update(loc, degrees(yaw), _gps->ground_speed_cm * 0.01 * _gps->get_lag());
+        return true;
 }
 
 /*
-  update the centi-degree values
+  get the GPS lag in seconds
  */
-void AP_AHRS::update_cd_values(void)
+float AP_AHRS::get_position_lag(void) const
 {
-    roll_sensor  = degrees(roll) * 100;
-    pitch_sensor = degrees(pitch) * 100;
-    yaw_sensor   = degrees(yaw) * 100;
-    if (yaw_sensor < 0)
-        yaw_sensor += 36000;
+    return _gps->get_lag();
 }

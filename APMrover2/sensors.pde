@@ -1,15 +1,14 @@
 // -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 
-static void init_barometer(void)
-{
-    gcs_send_text_P(SEVERITY_LOW, PSTR("Calibrating barometer"));    
-    barometer.calibrate();
-    gcs_send_text_P(SEVERITY_LOW, PSTR("barometer calibration complete"));
-}
-
 static void init_sonar(void)
 {
-    sonar.init();
+#if CONFIG_HAL_BOARD == HAL_BOARD_APM1
+    sonar.Init(&adc);
+    sonar2.Init(&adc);
+#else
+    sonar.Init(NULL);
+    sonar2.Init(NULL);
+#endif
 }
 
 // read_battery - reads battery voltage and current and invokes failsafe
@@ -31,19 +30,17 @@ void read_receiver_rssi(void)
 // read the sonars
 static void read_sonars(void)
 {
-    sonar.update();
-
-    if (sonar.status() == RangeFinder::RangeFinder_NotConnected) {
+    if (!sonar.enabled()) {
         // this makes it possible to disable sonar at runtime
         return;
     }
 
-    if (sonar.has_data(1)) {
+    if (sonar2.enabled()) {
         // we have two sonars
-        obstacle.sonar1_distance_cm = sonar.distance_cm(0);
-        obstacle.sonar2_distance_cm = sonar.distance_cm(1);
+        obstacle.sonar1_distance_cm = sonar.distance_cm();
+        obstacle.sonar2_distance_cm = sonar2.distance_cm();
         if (obstacle.sonar1_distance_cm <= (uint16_t)g.sonar_trigger_cm &&
-            obstacle.sonar1_distance_cm <= (uint16_t)obstacle.sonar2_distance_cm)  {
+            obstacle.sonar2_distance_cm <= (uint16_t)obstacle.sonar2_distance_cm)  {
             // we have an object on the left
             if (obstacle.detected_count < 127) {
                 obstacle.detected_count++;
@@ -68,7 +65,7 @@ static void read_sonars(void)
         }
     } else {
         // we have a single sonar
-        obstacle.sonar1_distance_cm = sonar.distance_cm(0);
+        obstacle.sonar1_distance_cm = sonar.distance_cm();
         obstacle.sonar2_distance_cm = 0;
         if (obstacle.sonar1_distance_cm <= (uint16_t)g.sonar_trigger_cm)  {
             // obstacle detected in front 

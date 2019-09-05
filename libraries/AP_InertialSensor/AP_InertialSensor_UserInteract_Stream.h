@@ -14,7 +14,7 @@ public:
     AP_InertialSensor_UserInteractStream(AP_HAL::BetterStream *s) :
         _s(s) {}
 
-    bool blocking_read();
+    uint8_t blocking_read();
     void _printf_P(const prog_char *, ...);
 private:
     AP_HAL::BetterStream *_s;

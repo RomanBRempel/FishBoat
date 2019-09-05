@@ -11,11 +11,11 @@ float EmptyAnalogSource::read_average() {
 }
 
 float EmptyAnalogSource::voltage_average() {
-    return 5.0f * _v / 1024.0f;
+    return 5.0 * _v / 1024.0;
 }
 
 float EmptyAnalogSource::voltage_latest() {
-    return 5.0f * _v / 1024.0f;
+    return 5.0 * _v / 1024.0;
 }
 
 float EmptyAnalogSource::read_latest() {
@@ -41,7 +41,4 @@ AP_HAL::AnalogSource* EmptyAnalogIn::channel(int16_t n) {
     return new EmptyAnalogSource(1.11);
 }
 
-float EmptyAnalogIn::board_voltage(void)
-{
-    return 0;
-}
+

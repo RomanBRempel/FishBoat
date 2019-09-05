@@ -5,12 +5,6 @@ extern "C" {
 #ifndef _CHECKSUM_H_
 #define _CHECKSUM_H_
 
-// Visual Studio versions before 2010 don't have stdint.h, so we just error out.
-#if (defined _MSC_VER) && (_MSC_VER < 1600)
-#error "The C-MAVLink implementation requires Visual Studio 2010 or greater"
-#endif
-
-#include <stdint.h>
 
 /**
  *
@@ -42,7 +36,6 @@ static inline void crc_accumulate(uint8_t data, uint16_t *crcAccum)
 }
 #endif
 
-
 /**
  * @brief Initiliaze the buffer for the X.25 CRC
  *
@@ -71,7 +64,6 @@ static inline uint16_t crc_calculate(const uint8_t* pBuffer, uint16_t length)
         return crcTmp;
 }
 
-
 /**
  * @brief Accumulate the X.25 CRC by adding an array of bytes
  *
@@ -81,13 +73,16 @@ static inline uint16_t crc_calculate(const uint8_t* pBuffer, uint16_t length)
  * @param data new bytes to hash
  * @param crcAccum the already accumulated checksum
  **/
-static inline void crc_accumulate_buffer(uint16_t *crcAccum, const char *pBuffer, uint16_t length)
+static inline void crc_accumulate_buffer(uint16_t *crcAccum, const char *pBuffer, uint8_t length)
 {
 	const uint8_t *p = (const uint8_t *)pBuffer;
 	while (length--) {
                 crc_accumulate(*p++, crcAccum);
         }
 }
+
+
+
 
 #endif /* _CHECKSUM_H_ */
 

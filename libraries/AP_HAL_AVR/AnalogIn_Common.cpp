@@ -114,12 +114,4 @@ AP_HAL::AnalogSource* AVRAnalogIn::channel(int16_t ch)
     }
 }
 
-/*
-  return board voltage in volts
- */
-float AVRAnalogIn::board_voltage(void)
-{
-    return _vcc.voltage_latest();
-}
-
 #endif

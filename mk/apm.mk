@@ -16,12 +16,6 @@ include $(MK_DIR)/configure.mk
 
 else
 
-# short-circuit build for the help target
-ifeq ($(MAKECMDGOALS),help)
-include $(MK_DIR)/help.mk
-
-else
-
 # common makefile components
 include $(MK_DIR)/targets.mk
 include $(MK_DIR)/sketch_sources.mk
@@ -36,8 +30,8 @@ ifeq ($(HAL_BOARD),HAL_BOARD_APM2)
 include $(MK_DIR)/board_avr.mk
 endif
 
-ifeq ($(HAL_BOARD),HAL_BOARD_SITL)
-include $(MK_DIR)/board_native.mk
+ifeq ($(HAL_BOARD),HAL_BOARD_AVR_SITL)
+include $(MK_DIR)/board_avr_sitl.mk
 endif
 
 ifeq ($(HAL_BOARD),HAL_BOARD_LINUX)
@@ -48,14 +42,8 @@ ifeq ($(HAL_BOARD),HAL_BOARD_PX4)
 include $(MK_DIR)/board_px4.mk
 endif
 
-ifeq ($(HAL_BOARD),HAL_BOARD_VRBRAIN)
-include $(MK_DIR)/board_vrbrain.mk
-endif
-
 ifeq ($(HAL_BOARD),HAL_BOARD_FLYMAPLE)
 include $(MK_DIR)/board_flymaple.mk
-endif
-
 endif
 
 endif

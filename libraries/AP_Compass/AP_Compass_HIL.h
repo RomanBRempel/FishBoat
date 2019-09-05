@@ -4,24 +4,18 @@
 
 #include "Compass.h"
 
-#if COMPASS_MAX_INSTANCES == 1
-# define HIL_NUM_COMPASSES 1
-#else
-# define HIL_NUM_COMPASSES 2
-#endif
-
-class AP_Compass_HIL : public AP_Compass_Backend
+class AP_Compass_HIL : public Compass
 {
 public:
-    AP_Compass_HIL(Compass &compass);
-    void read(void);
-    bool init(void);
-
-    // detect the sensor
-    static AP_Compass_Backend *detect(Compass &compass);
-
+    AP_Compass_HIL();
+    bool        read(void);
+    void        accumulate(void);
+    void        setHIL(float roll, float pitch, float yaw);
 private:
-    uint8_t     _compass_instance[HIL_NUM_COMPASSES];
+    Vector3f    _hil_mag;
+    Vector3f    _Bearth;
+    float		_last_declination;
+    void        _setup_earth_field();
 };
 
 #endif

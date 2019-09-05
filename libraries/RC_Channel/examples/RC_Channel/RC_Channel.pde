@@ -1,6 +1,8 @@
 /*
  *       Example of RC_Channel library.
- *       Based on original sketch by Jason Short. 2010
+ *       Code by Jason Short. 2010
+ *       DIYDrones.com
+ *
  */
 #define CH_1 0
 #define CH_2 1
@@ -15,63 +17,42 @@
 #include <AP_Progmem.h>
 #include <AP_HAL.h>
 #include <AP_Param.h>
-#include <StorageManager.h>
 #include <AP_Math.h>
 #include <RC_Channel.h>
+
 #include <AP_HAL_AVR.h>
-#include <AP_HAL_SITL.h>
-#include <AP_HAL_PX4.h>
+#include <AP_HAL_AVR_SITL.h>
 #include <AP_HAL_Empty.h>
-#include <AP_Baro.h>
-#include <AP_ADC.h>
-#include <AP_GPS.h>
-#include <AP_InertialSensor.h>
-#include <AP_Notify.h>
-#include <DataFlash.h>
-#include <GCS_MAVLink.h>
-#include <AP_Mission.h>
-#include <StorageManager.h>
-#include <AP_Terrain.h>
-#include <AP_Compass.h>
-#include <AP_Declination.h>
-#include <SITL.h>
-#include <Filter.h>
-#include <AP_AHRS.h>
-#include <AP_Airspeed.h>
-#include <AP_Vehicle.h>
-#include <AP_ADC_AnalogSource.h>
-#include <AP_NavEKF.h>
-#include <AP_Rally.h>
-#include <AP_Scheduler.h>
-#include <UARTDriver.h>
-#include <AP_RangeFinder.h>
 
 const AP_HAL::HAL& hal = AP_HAL_BOARD_DRIVER;
 
-#define NUM_CHANNELS 8
-
-static RC_Channel rc_1(CH_1);
-static RC_Channel rc_2(CH_2);
-static RC_Channel rc_3(CH_3);
-static RC_Channel rc_4(CH_4);
-static RC_Channel rc_5(CH_5);
-static RC_Channel rc_6(CH_6);
-static RC_Channel rc_7(CH_7);
-static RC_Channel rc_8(CH_8);
-static RC_Channel *rc = &rc_1;
+RC_Channel rc_1(CH_1);
+RC_Channel rc_2(CH_2);
+RC_Channel rc_3(CH_3);
+RC_Channel rc_4(CH_4);
+RC_Channel rc_5(CH_5);
+RC_Channel rc_6(CH_6);
+RC_Channel rc_7(CH_7);
+RC_Channel rc_8(CH_8);
+RC_Channel *rc = &rc_1;
 
 
 void setup()
 {
     hal.console->println("ArduPilot RC Channel test");
+    hal.scheduler->delay(500);
+
+    setup_radio();
 
     print_radio_values();
 
     // set type of output, symmetrical angles or a number range;
+    // XXX BROKEN
     rc_1.set_angle(4500);
     rc_1.set_default_dead_zone(80);
     rc_1.set_type(RC_CHANNEL_TYPE_ANGLE_RAW);
 
+    // XXX BROKEN
     rc_2.set_angle(4500);
     rc_2.set_default_dead_zone(80);
     rc_2.set_type(RC_CHANNEL_TYPE_ANGLE_RAW);
@@ -89,33 +70,62 @@ void setup()
     rc_7.set_range(0,1000);
 
     rc_8.set_range(0,1000);
-    for (int i=0; i<NUM_CHANNELS; i++) {
-        rc[i].enable_out();
+
+    for (int i = 0; i < 30; i++) {
+        read_radio();
     }
+    rc_1.trim();
+    rc_2.trim();
+    rc_4.trim();
 }
 
 void loop()
 {
-    RC_Channel::set_pwm_all();
-    print_pwm();
-    
-    copy_input_output();
-
     hal.scheduler->delay(20);
+    debug_rcin();
+    read_radio();
+    print_pwm();
 }
 
-static void print_pwm(void)
+void debug_rcin() {
+    uint16_t channels[8];
+    hal.rcin->read(channels, 8);
+    hal.console->printf_P(
+        PSTR("rcin: %u %u %u %u %u %u %u %u\r\n"),
+        channels[0],
+        channels[1],
+        channels[2],
+        channels[3],
+        channels[4],
+        channels[5],
+        channels[6],
+        channels[7]);
+}
+
+void read_radio()
 {
-    for (int i=0; i<NUM_CHANNELS; i++) {
+    rc_1.set_pwm(hal.rcin->read(CH_1));
+    rc_2.set_pwm(hal.rcin->read(CH_2));
+    rc_3.set_pwm(hal.rcin->read(CH_3));
+    rc_4.set_pwm(hal.rcin->read(CH_4));
+    rc_5.set_pwm(hal.rcin->read(CH_5));
+    rc_6.set_pwm(hal.rcin->read(CH_6));
+    rc_7.set_pwm(hal.rcin->read(CH_7));
+    rc_8.set_pwm(hal.rcin->read(CH_8));
+}
+
+void print_pwm()
+{
+    for (int i=0; i<8; i++) {
 	    hal.console->printf("ch%u: %4d ", (unsigned)i+1, (int)rc[i].control_in);
     }
     hal.console->printf("\n");
 }
 
 
-static void print_radio_values()
+void print_radio_values()
 {
-    for (int i=0; i<NUM_CHANNELS; i++) {
+    for (int i=0; i<8; i++) {
 	     hal.console->printf("CH%u: %u|%u\n",
 			  (unsigned)i+1, 
 			  (unsigned)rc[i].radio_min, 
@@ -124,16 +134,66 @@ static void print_radio_values()
 }
 
 
-/*
-  copy scaled input to output
- */
-static void copy_input_output(void)
+void setup_radio(void)
 {
-    for (int i=0; i<NUM_CHANNELS; i++) {
-        rc[i].servo_out = rc[i].control_in;
-        rc[i].calc_pwm();
-        rc[i].output();
+	hal.console->println("\n\nRadio Setup:");
+	uint8_t i;
+	
+	for(i = 0; i < 100;i++){
+		hal.scheduler->delay(20);
+		read_radio();
+	}
+		
+	rc_1.radio_min = rc_1.radio_in;
+	rc_2.radio_min = rc_2.radio_in;
+	rc_3.radio_min = rc_3.radio_in;
+	rc_4.radio_min = rc_4.radio_in;
+	rc_5.radio_min = rc_5.radio_in;
+	rc_6.radio_min = rc_6.radio_in;
+	rc_7.radio_min = rc_7.radio_in;
+	rc_8.radio_min = rc_8.radio_in;
+
+	rc_1.radio_max = rc_1.radio_in;
+	rc_2.radio_max = rc_2.radio_in;
+	rc_3.radio_max = rc_3.radio_in;
+	rc_4.radio_max = rc_4.radio_in;
+	rc_5.radio_max = rc_5.radio_in;
+	rc_6.radio_max = rc_6.radio_in;
+	rc_7.radio_max = rc_7.radio_in;
+	rc_8.radio_max = rc_8.radio_in;
+
+	rc_1.radio_trim = rc_1.radio_in;
+	rc_2.radio_trim = rc_2.radio_in;
+	rc_4.radio_trim = rc_4.radio_in;
+	// 3 is not trimed
+	rc_5.radio_trim = 1500;
+	rc_6.radio_trim = 1500;
+	rc_7.radio_trim = 1500;
+	rc_8.radio_trim = 1500;
+			
+	hal.console->println("\nMove all controls to each extreme. Hit Enter to save:");
+	while(1){
+		
+		hal.scheduler->delay(20);
+		// Filters radio input - adjust filters in the radio.pde file
+		// ----------------------------------------------------------
+		read_radio();
+
+		rc_1.update_min_max();
+		rc_2.update_min_max();
+		rc_3.update_min_max();
+		rc_4.update_min_max();
+		rc_5.update_min_max();
+		rc_6.update_min_max();
+		rc_7.update_min_max();
+		rc_8.update_min_max();
+		
+        if(hal.console->available() > 0) {
+            hal.console->println("Radio calibrated, Showing control values:");
+            break;
+        }
     }
+    return;
 }
 
 AP_HAL_MAIN();

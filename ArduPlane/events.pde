@@ -13,7 +13,6 @@ static void failsafe_short_on_event(enum failsafe_state fstype)
     case STABILIZE:
     case ACRO:
     case FLY_BY_WIRE_A:
-    case AUTOTUNE:
     case FLY_BY_WIRE_B:
     case CRUISE:
     case TRAINING:
@@ -61,7 +60,6 @@ static void failsafe_long_on_event(enum failsafe_state fstype)
     case STABILIZE:
     case ACRO:
     case FLY_BY_WIRE_A:
-    case AUTOTUNE:
     case FLY_BY_WIRE_B:
     case CRUISE:
     case TRAINING:
@@ -87,9 +85,6 @@ static void failsafe_long_on_event(enum failsafe_state fstype)
     default:
         break;
     }
-    if (fstype == FAILSAFE_GCS) {
-        gcs_send_text_P(SEVERITY_HIGH, PSTR("No GCS heartbeat."));
-    }
     gcs_send_text_fmt(PSTR("flight mode = %u"), (unsigned)control_mode);
 }
 
@@ -113,14 +108,47 @@ void low_battery_event(void)
         return;
     }
     gcs_send_text_fmt(PSTR("Low Battery %.2fV Used %.0f mAh"),
-                      (double)battery.voltage(), (double)battery.current_total_mah());
+                      battery.voltage(), battery.current_total_mah());
     set_mode(RTL);
     aparm.throttle_cruise.load();
     failsafe.low_battery = true;
     AP_Notify::flags.failsafe_battery = true;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// repeating event control
+
+/*
+  update state for MAV_CMD_DO_REPEAT_SERVO and MAV_CMD_DO_REPEAT_RELAY
+*/
 static void update_events(void)
 {
-    ServoRelayEvents.update_events();
+    if (event_state.repeat == 0 || (millis() - event_state.start_time_ms) < event_state.delay_ms) {
+        return;
+    }
+
+    // event_repeat = -1 means repeat forever
+    if (event_state.repeat != 0) {
+        event_state.start_time_ms = millis();
+
+        switch (event_state.type) {
+        case EVENT_TYPE_SERVO:
+            hal.rcout->enable_ch(event_state.rc_channel);
+            if (event_state.repeat & 1) {
+                servo_write(event_state.rc_channel, event_state.undo_value);
+            } else {
+                servo_write(event_state.rc_channel, event_state.servo_value);                 
+            }
+            break;
+
+        case EVENT_TYPE_RELAY:
+            gcs_send_text_fmt(PSTR("Relay toggle"));
+            relay.toggle();
+            break;
+        }
+
+        if (event_state.repeat > 0) {
+            event_state.repeat--;
+        }
+    }
 }

@@ -58,25 +58,14 @@ def build_motors(frame):
             Motor(180,  True,  2),
             Motor(45,   False, 3),
             Motor(135,  False, 4),
-            Motor(-45,  False, 5),
-            Motor(-135, False, 6),
-            Motor(270,  True,  7),
-            Motor(90,   True,  8),
+            Motor(-45,  False, 7),
+            Motor(-135, False, 8),
+            Motor(270,  True, 10),
+            Motor(90,   True, 11),
             ]
         if frame == 'octax':
             for i in range(8):
                 motors[i].angle += 22.5
-    elif frame in ["octa-quad"]:
-        motors = [
-            Motor(  45, False, 1),
-            Motor( -45, True,  2),
-            Motor(-135, False, 3),
-            Motor( 135, True,  4),
-            Motor( -45, False, 5),
-            Motor(  45, True,  6),
-            Motor( 135, False, 7),
-            Motor(-135, True,  8),
-            ]
     else:
         raise RuntimeError("Unknown multicopter frame type '%s'" % frame)
 
@@ -86,7 +75,7 @@ def build_motors(frame):
 class MultiCopter(Aircraft):
     '''a MultiCopter'''
     def __init__(self, frame='+',
-                 hover_throttle=0.51,
+                 hover_throttle=0.45,
                  terminal_velocity=15.0,
                  frame_height=0.1,
                  mass=1.5):
@@ -103,7 +92,7 @@ class MultiCopter(Aircraft):
         # to hover against gravity when each motor is at hover_throttle
         self.thrust_scale = (self.mass * self.gravity) / (len(self.motors) * self.hover_throttle)
 
-        self.last_time = self.time_now
+        self.last_time = time.time()
 
     def update(self, servos):
         for i in range(0, len(self.motors)):
@@ -117,7 +106,7 @@ class MultiCopter(Aircraft):
         m = self.motor_speed
 
         # how much time has passed?
-        t = self.time_now
+        t = time.time()
         delta_time = t - self.last_time
         self.last_time = t
 
@@ -167,9 +156,6 @@ class MultiCopter(Aircraft):
         # acceleration (ie. real movement), plus gravity
         self.accel_body = self.dcm.transposed() * (accel_earth + Vector3(0, 0, -self.gravity))
 
-        # add some noise
-        self.add_noise(thrust / (self.thrust_scale * len(self.motors)))
-
         # new velocity vector
         self.velocity += accel_earth * delta_time
 
@@ -191,4 +177,4 @@ class MultiCopter(Aircraft):
                                     -(self.ground_level + self.frame_height - self.home_altitude))
 
         # update lat/lon/altitude
-        self.update_position()
+        self.update_position(delta_time)

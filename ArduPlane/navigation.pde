@@ -37,7 +37,7 @@ static void loiter_angle_update(void)
     loiter.old_target_bearing_cd = target_bearing_cd;
     loiter_delta_cd = wrap_180_cd(loiter_delta_cd);
 
-    loiter.sum_cd += loiter_delta_cd * loiter.direction;
+    loiter.sum_cd += loiter_delta_cd;
 }
 
 //****************************************************************
@@ -54,15 +54,18 @@ static void navigate()
         return;
     }
 
-    if (next_WP_loc.lat == 0) {
+    if (next_WP.lat == 0) {
         return;
     }
 
     // waypoint distance from plane
     // ----------------------------
-    auto_state.wp_distance = get_distance(current_loc, next_WP_loc);
-    auto_state.wp_proportion = location_path_proportion(current_loc, 
-                                                        prev_WP_loc, next_WP_loc);
+    wp_distance = get_distance(current_loc, next_WP);
+
+    if (wp_distance < 0) {
+        gcs_send_text_P(SEVERITY_HIGH,PSTR("WP error - distance < 0"));
+        return;
+    }
 
     // update total loiter angle
     loiter_angle_update();
@@ -71,6 +74,7 @@ static void navigate()
     // ---------------------------------------------------
     update_navigation();
 }
+
 
 static void calc_airspeed_errors()
 {
@@ -106,16 +110,14 @@ static void calc_airspeed_errors()
     if (target_airspeed_cm > (aparm.airspeed_max * 100))
         target_airspeed_cm = (aparm.airspeed_max * 100);
 
-    // use the TECS view of the target airspeed for reporting, to take
-    // account of the landing speed
-    airspeed_error_cm = SpdHgt_Controller->get_target_airspeed()*100 - aspeed_cm;
+    airspeed_error_cm = target_airspeed_cm - aspeed_cm;
 }
 
 static void calc_gndspeed_undershoot()
 {
  	// Use the component of ground speed in the forward direction
 	// This prevents flyaway if wind takes plane backwards
-    if (gps.status() >= AP_GPS::GPS_OK_FIX_2D) {
+    if (g_gps && g_gps->status() >= GPS::GPS_OK_FIX_2D) {
 	    Vector2f gndVel = ahrs.groundspeed_vector();
 		const Matrix3f &rotMat = ahrs.get_dcm_matrix();
 		Vector2f yawVect = Vector2f(rotMat.a.x,rotMat.b.x);
@@ -125,9 +127,36 @@ static void calc_gndspeed_undershoot()
     }
 }
 
+static void calc_altitude_error()
+{
+    if (control_mode == FLY_BY_WIRE_B ||
+        control_mode == CRUISE) {
+        return;
+    }
+    if (nav_controller->reached_loiter_target()) {
+        // once we reach a loiter target then lock to the final
+        // altitude target
+        target_altitude_cm = next_WP.alt;
+    } else if (offset_altitude_cm != 0) {
+        // control climb/descent rate
+        target_altitude_cm = next_WP.alt - (offset_altitude_cm*((float)(wp_distance-30) / (float)(wp_totalDistance-30)));
+
+        // stay within a certain range
+        if (prev_WP.alt > next_WP.alt) {
+            target_altitude_cm = constrain_int32(target_altitude_cm, next_WP.alt, prev_WP.alt);
+        }else{
+            target_altitude_cm = constrain_int32(target_altitude_cm, prev_WP.alt, next_WP.alt);
+        }
+    } else if (non_nav_command_ID != MAV_CMD_CONDITION_CHANGE_ALT) {
+        target_altitude_cm = next_WP.alt;
+    }
+
+    altitude_error_cm       = target_altitude_cm - adjusted_altitude_cm();
+}
+
 static void update_loiter()
 {
-    nav_controller->update_loiter(next_WP_loc, abs(g.loiter_radius), loiter.direction);
+    nav_controller->update_loiter(next_WP, abs(g.loiter_radius), loiter.direction);
 }
 
 /*
@@ -138,9 +167,9 @@ static void update_cruise()
 {
     if (!cruise_state.locked_heading &&
         channel_roll->control_in == 0 &&
-        rudder_input == 0 &&
-        gps.status() >= AP_GPS::GPS_OK_FIX_2D &&
-        gps.ground_speed() >= 3 &&
+        channel_rudder->control_in == 0 &&
+        g_gps && g_gps->status() >= GPS::GPS_OK_FIX_2D &&
+        g_gps->ground_speed_cm >= 300 &&
         cruise_state.lock_timer_ms == 0) {
         // user wants to lock the heading - start the timer
         cruise_state.lock_timer_ms = hal.scheduler->millis();
@@ -151,16 +180,16 @@ static void update_cruise()
         // from user
         cruise_state.locked_heading = true;
         cruise_state.lock_timer_ms = 0;
-        cruise_state.locked_heading_cd = gps.ground_course_cd();
-        prev_WP_loc = current_loc;
+        cruise_state.locked_heading_cd = g_gps->ground_course_cd;
+        prev_WP = current_loc;
     }
     if (cruise_state.locked_heading) {
-        next_WP_loc = prev_WP_loc;
+        next_WP = prev_WP;
         // always look 1km ahead
-        location_update(next_WP_loc,
+        location_update(next_WP, 
                         cruise_state.locked_heading_cd*0.01f, 
-                        get_distance(prev_WP_loc, current_loc) + 1000);
-        nav_controller->update_waypoint(prev_WP_loc, next_WP_loc);
+                        get_distance(prev_WP, current_loc) + 1000);
+        nav_controller->update_waypoint(prev_WP, next_WP);
     }
 }
 
@@ -180,18 +209,19 @@ static void update_fbwb_speed_height(void)
         elevator_input = -elevator_input;
     }
     
-    change_target_altitude(g.flybywire_climb_rate * elevator_input * delta_us_fast_loop * 0.0001f);
+    target_altitude_cm += g.flybywire_climb_rate * elevator_input * delta_us_fast_loop * 0.0001f;
     
-    if (is_zero(elevator_input) && !is_zero(last_elevator_input)) {
+    if (elevator_input == 0.0f && last_elevator_input != 0.0f) {
         // the user has just released the elevator, lock in
         // the current altitude
-        set_target_altitude_current();
+        target_altitude_cm = current_loc.alt;
     }
 
     // check for FBWB altitude limit
-    check_minimum_altitude();
-
-    altitude_error_cm = calc_altitude_error_cm();
+    if (g.FBWB_min_altitude_cm != 0 && target_altitude_cm < home.alt + g.FBWB_min_altitude_cm) {
+        target_altitude_cm = home.alt + g.FBWB_min_altitude_cm;
+    }
+    altitude_error_cm = target_altitude_cm - adjusted_altitude_cm();
     
     last_elevator_input = elevator_input;
     
@@ -199,21 +229,59 @@ static void update_fbwb_speed_height(void)
     calc_nav_pitch();
 }
 
-/*
-  calculate the turn angle for the next leg of the mission
- */
-static void setup_turn_angle(void)
+static void setup_glide_slope(void)
 {
-    int32_t next_ground_course_cd = mission.get_next_ground_course_cd(-1);
-    if (next_ground_course_cd == -1) {
-        // the mission library can't determine a turn angle, assume 90 degrees
-        auto_state.next_turn_angle = 90.0f;
-    } else {
-        // get the heading of the current leg
-        int32_t ground_course_cd = get_bearing_cd(prev_WP_loc, next_WP_loc);
+    // establish the distance we are travelling to the next waypoint,
+    // for calculating out rate of change of altitude
+    wp_totalDistance        = get_distance(current_loc, next_WP);
+    wp_distance             = wp_totalDistance;
 
-        // work out the angle we need to turn through
-        auto_state.next_turn_angle = wrap_180_cd(next_ground_course_cd - ground_course_cd) * 0.01f;
+    /*
+      work out if we will gradually change altitude, or try to get to
+      the new altitude as quickly as possible.
+     */
+    switch (control_mode) {
+    case RTL:
+    case GUIDED:
+        /* glide down slowly if above target altitude, but ascend more
+           rapidly if below it. See
+           https://github.com/diydrones/ardupilot/issues/39
+        */
+        if (current_loc.alt > next_WP.alt) {
+            offset_altitude_cm = next_WP.alt - current_loc.alt;            
+        } else {
+            offset_altitude_cm = 0;
+        }
+        break;
+
+    case AUTO:
+        if (prev_WP.id != MAV_CMD_NAV_TAKEOFF && 
+            prev_WP.alt != home.alt && 
+            (next_WP.id == MAV_CMD_NAV_WAYPOINT || next_WP.id == MAV_CMD_NAV_LAND)) {
+            offset_altitude_cm = next_WP.alt - prev_WP.alt;
+        } else {
+            offset_altitude_cm = 0;        
+        }
+        break;
+    default:
+        offset_altitude_cm = 0;        
+        break;
     }
-}    
+}
+
+/*
+  return relative altitude in meters (relative to home)
+ */
+static float relative_altitude(void)
+{
+    return (current_loc.alt - home.alt) * 0.01f;
+}
+
+/*
+  return relative altitude in centimeters, absolute value
+ */
+static int32_t relative_altitude_abs_cm(void)
+{
+    return labs(current_loc.alt - home.alt);
+}
 

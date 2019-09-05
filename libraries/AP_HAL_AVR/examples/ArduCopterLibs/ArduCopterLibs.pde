@@ -18,8 +18,8 @@
 #include <AP_InertialSensor.h>  // ArduPilot Mega Inertial Sensor (accel & gyro) Library
                                 // (only included for makefile libpath to work)
 #include <AP_AHRS.h>
+#include <APM_PI.h>             // PI library
 #include <AC_PID.h>             // PID library
-#include <AC_P.h>               // P library
 #include <RC_Channel.h>         // RC Channel Library
 #include <AP_Motors.h>          // AP Motors library
 #include <AP_ADC_AnalogSource.h>
@@ -36,13 +36,7 @@
 #include <DataFlash.h>
 #include <AP_InertialNav.h>     // ArduPilot Mega inertial navigation library
 #include <GCS_MAVLink.h>
-#include <AP_Mission.h>
-#include <StorageManager.h>
-#include <AP_Terrain.h>
 #include <memcheck.h>
-#include <AP_NavEKF.h>
-#include <AP_Nav_Common.h>
-#include <AP_BattMonitor.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_APM2
 const AP_HAL::HAL& hal = AP_HAL_AVR_APM2;

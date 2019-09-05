@@ -16,12 +16,9 @@ static int8_t	test_sonar(uint8_t argc, 	const Menu::arg *argv);
 static int8_t	test_mag(uint8_t argc, 			const Menu::arg *argv);
 static int8_t	test_modeswitch(uint8_t argc, 		const Menu::arg *argv);
 static int8_t	test_logging(uint8_t argc, 		const Menu::arg *argv);
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
 static int8_t   test_shell(uint8_t argc,              const Menu::arg *argv);
 #endif
-
-// forward declaration to keep the compiler happy
-static void test_wp_print(const AP_Mission::Mission_Command& cmd);
 
 // Creates a constant array of structs representing menu options
 // and stores them in Flash memory, not RAM.
@@ -43,7 +40,7 @@ static const struct Menu::command test_menu_commands[] PROGMEM = {
 	{"sonartest",	test_sonar},
 	{"compass",		test_mag},
 	{"logging",		test_logging},
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
     {"shell", 				test_shell},
 #endif
 };
@@ -104,7 +101,7 @@ test_passthru(uint8_t argc, const Menu::arg *argv)
 		delay(20);
 
         // New radio frame? (we could use also if((millis()- timer) > 20)
-        if (hal.rcin->new_input()) {
+        if (hal.rcin->valid_channels() > 0) {
             cliSerial->print("CH:");
             for(int i = 0; i < 8; i++){
                 cliSerial->print(hal.rcin->read(i));	// Print channel values
@@ -220,14 +217,14 @@ test_relay(uint8_t argc, const Menu::arg *argv)
 
 	while(1){
 		cliSerial->printf_P(PSTR("Relay on\n"));
-		relay.on(0);
+		relay.on();
 		delay(3000);
 		if(cliSerial->available() > 0){
 			return (0);
 		}
 
 		cliSerial->printf_P(PSTR("Relay off\n"));
-		relay.off(0);
+		relay.off();
 		delay(3000);
 		if(cliSerial->available() > 0){
 			return (0);
@@ -240,30 +237,28 @@ test_wp(uint8_t argc, const Menu::arg *argv)
 {
 	delay(1000);
 
-	cliSerial->printf_P(PSTR("%u waypoints\n"), (unsigned)mission.num_commands());
+	cliSerial->printf_P(PSTR("%u waypoints\n"), (unsigned)g.command_total);
 	cliSerial->printf_P(PSTR("Hit radius: %f\n"), g.waypoint_radius);
 
-	for(uint8_t i = 0; i < mission.num_commands(); i++){
-        AP_Mission::Mission_Command temp_cmd;
-        if (mission.read_cmd_from_storage(i,temp_cmd)) {
-            test_wp_print(temp_cmd);
-        }
+	for(uint8_t i = 0; i <= g.command_total; i++){
+		struct Location temp = get_cmd_with_index(i);
+		test_wp_print(&temp, i);
 	}
 
 	return (0);
 }
 
 static void
-test_wp_print(const AP_Mission::Mission_Command& cmd)
+test_wp_print(const struct Location *cmd, uint8_t wp_index)
 {
-    cliSerial->printf_P(PSTR("command #: %d id:%d options:%d p1:%d p2:%ld p3:%ld p4:%ld \n"),
-                    (int)cmd.index,
-                    (int)cmd.id,
-                    (int)cmd.content.location.options,
-                    (int)cmd.p1,
-                    (long)cmd.content.location.alt,
-                    (long)cmd.content.location.lat,
-                    (long)cmd.content.location.lng);
+	cliSerial->printf_P(PSTR("command #: %d id:%d options:%d p1:%d p2:%ld p3:%ld p4:%ld \n"),
+		(int)wp_index,
+		(int)cmd->id,
+		(int)cmd->options,
+		(int)cmd->p1,
+		cmd->alt,
+		cmd->lat,
+		cmd->lng);
 }
 
 static int8_t
@@ -307,30 +302,27 @@ test_logging(uint8_t argc, const Menu::arg *argv)
 static int8_t
 test_gps(uint8_t argc, const Menu::arg *argv)
 {
-    print_hit_enter();
-    delay(1000);
+	print_hit_enter();
+	delay(1000);
 
-    uint32_t last_message_time_ms = 0;
-    while(1) {
-        delay(100);
+	while(1){
+		delay(100);
 
-        gps.update();
+		g_gps->update();
 
-        if (gps.last_message_time_ms() != last_message_time_ms) {
-            last_message_time_ms = gps.last_message_time_ms();
-            const Location &loc = gps.location();
-            cliSerial->printf_P(PSTR("Lat: %ld, Lon %ld, Alt: %ldm, #sats: %d\n"),
-                                (long)loc.lat,
-                                (long)loc.lng,
-                                (long)loc.alt/100,
-                                (int)gps.num_sats());
-        } else {
-            cliSerial->printf_P(PSTR("."));
-        }
-        if(cliSerial->available() > 0) {
-            return (0);
-        }
-    }
+		if (g_gps->new_data){
+			cliSerial->printf_P(PSTR("Lat: %ld, Lon %ld, Alt: %ldm, #sats: %d\n"),
+					g_gps->latitude,
+					g_gps->longitude,
+					g_gps->altitude_cm/100,
+					g_gps->num_sats);
+		}else{
+			cliSerial->printf_P(PSTR("."));
+		}
+		if(cliSerial->available() > 0){
+			return (0);
+		}
+	}
 }
 
 static int8_t
@@ -349,7 +341,7 @@ test_ins(uint8_t argc, const Menu::arg *argv)
     uint8_t medium_loopCounter = 0;
 
 	while(1){
-        ins.wait_for_sample();
+        ins.wait_for_sample(1000);
 
         ahrs.update();
 
@@ -369,11 +361,11 @@ test_ins(uint8_t argc, const Menu::arg *argv)
                             (int)ahrs.roll_sensor / 100,
                             (int)ahrs.pitch_sensor / 100,
                             (uint16_t)ahrs.yaw_sensor / 100,
-                            (double)gyros.x, (double)gyros.y, (double)gyros.z,
-                            (double)accels.x, (double)accels.y, (double)accels.z);
-        if(cliSerial->available() > 0){
-            return (0);
-        }
+                            gyros.x, gyros.y, gyros.z,
+                            accels.x, accels.y, accels.z);
+    }
+    if(cliSerial->available() > 0){
+        return (0);
     }
 }
 
@@ -409,7 +401,7 @@ test_mag(uint8_t argc, const Menu::arg *argv)
     uint8_t medium_loopCounter = 0;
 
     while(1) {
-        ins.wait_for_sample();
+        ins.wait_for_sample(1000);
         ahrs.update();
 
         medium_loopCounter++;
@@ -418,20 +410,23 @@ test_mag(uint8_t argc, const Menu::arg *argv)
                 // Calculate heading
                 Matrix3f m = ahrs.get_dcm_matrix();
                 heading = compass.calculate_heading(m);
-                compass.learn_offsets();
+                compass.null_offsets();
             }
             medium_loopCounter = 0;
         }
         
         counter++;
         if (counter>20) {
-            if (compass.healthy()) {
-                const Vector3f mag_ofs = compass.get_offsets();
-                const Vector3f mag = compass.get_field();
-                cliSerial->printf_P(PSTR("Heading: %ld, XYZ: %.0f, %.0f, %.0f,\tXYZoff: %6.2f, %6.2f, %6.2f\n"),
+            if (compass.healthy) {
+                Vector3f maggy = compass.get_offsets();
+                cliSerial->printf_P(PSTR("Heading: %ld, XYZ: %d, %d, %d,\tXYZoff: %6.2f, %6.2f, %6.2f\n"),
                                     (wrap_360_cd(ToDeg(heading) * 100)) /100,
-                                    (double)mag.x, (double)mag.y, (double)mag.z,
-                                    (double)mag_ofs.x, (double)mag_ofs.y, (double)mag_ofs.z);
+                                    (int)compass.mag_x,
+                                    (int)compass.mag_y,
+                                    (int)compass.mag_z,
+                                    maggy.x,
+                                    maggy.y,
+                                    maggy.z);
             } else {
                 cliSerial->println_P(PSTR("compass not healthy"));
             }
@@ -455,15 +450,12 @@ test_mag(uint8_t argc, const Menu::arg *argv)
 static int8_t
 test_sonar(uint8_t argc, const Menu::arg *argv)
 {
-    init_sonar();
-    delay(20);
-    sonar.update();
-
-    if (sonar.status() == RangeFinder::RangeFinder_NotConnected) {
+    if (!sonar.enabled()) {
         cliSerial->println_P(PSTR("WARNING: Sonar is not enabled"));
     }
 
     print_hit_enter();
+    init_sonar();
     
     float sonar_dist_cm_min = 0.0f;
     float sonar_dist_cm_max = 0.0f;
@@ -475,12 +467,11 @@ test_sonar(uint8_t argc, const Menu::arg *argv)
 
 	while (true) {
         delay(20);
-        sonar.update();
         uint32_t now = millis();
-    
-        float dist_cm = sonar.distance_cm(0);
-        float voltage = sonar.voltage_mv(0);
-        if (is_zero(sonar_dist_cm_min)) {
+
+        float dist_cm = sonar.distance_cm();
+        float voltage = sonar.voltage();
+        if (sonar_dist_cm_min == 0.0f) {
             sonar_dist_cm_min = dist_cm;
             voltage_min = voltage;
         }
@@ -489,9 +480,9 @@ test_sonar(uint8_t argc, const Menu::arg *argv)
         voltage_min = min(voltage_min, voltage);
         voltage_max = max(voltage_max, voltage);
 
-        dist_cm = sonar.distance_cm(1);
-        voltage = sonar.voltage_mv(1);
-        if (is_zero(sonar2_dist_cm_min)) {
+        dist_cm = sonar2.distance_cm();
+        voltage = sonar2.voltage();
+        if (sonar2_dist_cm_min == 0.0f) {
             sonar2_dist_cm_min = dist_cm;
             voltage2_min = voltage;
         }
@@ -502,14 +493,14 @@ test_sonar(uint8_t argc, const Menu::arg *argv)
 
         if (now - last_print >= 200) {
             cliSerial->printf_P(PSTR("sonar1 dist=%.1f:%.1fcm volt1=%.2f:%.2f   sonar2 dist=%.1f:%.1fcm volt2=%.2f:%.2f\n"), 
-                                (double)sonar_dist_cm_min,
-                                (double)sonar_dist_cm_max,
-                                (double)voltage_min,
-                                (double)voltage_max,
-                                (double)sonar2_dist_cm_min,
-                                (double)sonar2_dist_cm_max,
-                                (double)voltage2_min,
-                                (double)voltage2_max);
+                                sonar_dist_cm_min, 
+                                sonar_dist_cm_max, 
+                                voltage_min,
+                                voltage_max,
+                                sonar2_dist_cm_min, 
+                                sonar2_dist_cm_max, 
+                                voltage2_min,
+                                voltage2_max);
             voltage_min = voltage_max = 0.0f;
             voltage2_min = voltage2_max = 0.0f;
             sonar_dist_cm_min = sonar_dist_cm_max = 0.0f;
@@ -523,7 +514,7 @@ test_sonar(uint8_t argc, const Menu::arg *argv)
     return (0);
 }
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
 /*
  *  run a debug shell
  */

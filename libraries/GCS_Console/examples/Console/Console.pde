@@ -14,9 +14,6 @@
 #include <AP_Param.h>
 #include <AP_Math.h>
 #include <GCS_MAVLink.h>
-#include <AP_Mission.h>
-#include <StorageManager.h>
-#include <AP_Terrain.h>
 #include <GCS_Console.h>
 
 #include "simplegcs.h"
@@ -49,7 +46,7 @@ void setup(void) {
     hal.uartA->begin(115200, 128, 256);
 
     /* Setup GCS_Mavlink library's comm 0 port. */
-    mavlink_comm_port[0] = hal.uartA;
+    mavlink_comm_0_port = hal.uartA;
     
     char hello[] = "Hello statustext\r\n";
     try_send_statustext(MAVLINK_COMM_0, hello, strlen(hello));

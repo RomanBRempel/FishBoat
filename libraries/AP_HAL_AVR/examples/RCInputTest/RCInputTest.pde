@@ -2,7 +2,6 @@
 #include <AP_Common.h>
 #include <AP_Math.h>
 #include <AP_Param.h>
-#include <StorageManager.h>
 #include <AP_Progmem.h>
 
 #include <AP_HAL.h>
@@ -28,9 +27,9 @@ void multiread(AP_HAL::RCInput* in) {
 
 void individualread(AP_HAL::RCInput* in) {
     /* individual channel read method: */
-    bool valid;
+    uint8_t valid;
     uint16_t channels[8];
-    valid = in->new_input();
+    valid = in->valid_channels();
     for (int i = 0; i < 8; i++) {
         channels[i] = in->read(i);
     }
@@ -62,7 +61,7 @@ void loop (void) {
 
 void setup (void) {
     hal.console->printf_P(PSTR("reading rc in:"));
-    hal.gpio->pinMode(27, HAL_GPIO_OUTPUT);
+    hal.gpio->pinMode(27, GPIO_OUTPUT);
     hal.gpio->write(27, 0);
 }
 

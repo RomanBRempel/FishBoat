@@ -1,13 +1,13 @@
 /// -*- tab-width: 4; Mode: C++; c-basic-offset: 4; indent-tabs-mode: nil -*-
 /*
- * Example of DataFlash library.
- * originally based on code by Jordi MuÒoz and Jose Julio
+ *       Example of DataFlash library.
+ *       Code by Jordi MuÒoz and Jose Julio. DIYDrones.com
  */
 
 // Libraries
 #include <AP_HAL.h>
 #include <AP_HAL_AVR.h>
-#include <AP_HAL_SITL.h>
+#include <AP_HAL_AVR_SITL.h>
 #include <AP_HAL_Empty.h>
 #include <AP_HAL_PX4.h>
 
@@ -27,15 +27,9 @@
 #include <AP_GPS.h>
 #include <DataFlash.h>
 #include <GCS_MAVLink.h>
-#include <AP_Mission.h>
-#include <StorageManager.h>
-#include <AP_Terrain.h>
 #include <AP_Notify.h>
 #include <AP_Vehicle.h>
-#include <AP_NavEKF.h>
-#include <AP_Rally.h>
-#include <AP_Scheduler.h>
-#include <AP_BattMonitor.h>
+
 
 
 const AP_HAL::HAL& hal = AP_HAL_BOARD_DRIVER;
@@ -68,7 +62,7 @@ static uint16_t log_num;
 
 void setup()
 {
-    DataFlash.Init(log_structure, sizeof(log_structure)/sizeof(log_structure[0]));
+    DataFlash.Init();                            // DataFlash initialization
 
     hal.console->println("Dataflash Log Test 1.0");
 
@@ -85,7 +79,7 @@ void setup()
 
     // We start to write some info (sequentialy) starting from page 1
     // This is similar to what we will do...
-    log_num = DataFlash.StartNewLog();
+    log_num = DataFlash.StartNewLog(sizeof(log_structure)/sizeof(log_structure[0]), log_structure);
     hal.console->printf("Using log number %u\n", log_num);
     hal.console->println("After testing perform erase before using DataFlash for logging!");
     hal.console->println("");
@@ -132,6 +126,8 @@ void loop()
 
     DataFlash.get_log_boundaries(log_num, start, end); 
 	DataFlash.LogReadProcess(log_num, start, end, 
+                             sizeof(log_structure)/sizeof(log_structure[0]),
+                             log_structure, 
                              print_mode,
                              hal.console);
     hal.console->printf("\nTest complete.  Test will repeat in 20 seconds\n");

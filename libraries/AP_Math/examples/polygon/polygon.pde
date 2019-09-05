@@ -6,11 +6,9 @@
 #include <AP_Common.h>
 #include <AP_Progmem.h>
 #include <AP_Param.h>
-#include <StorageManager.h>
 #include <AP_Math.h>
 #include <AP_HAL.h>
 #include <AP_HAL_AVR.h>
-#include <AP_HAL_Linux.h>
 
 const AP_HAL::HAL& hal = AP_HAL_BOARD_DRIVER;
 
@@ -89,8 +87,8 @@ void setup(void)
         result = Polygon_outside(test_points[i].point,
                 OBC_boundary, ARRAY_LENGTH(OBC_boundary));
         hal.console->printf_P(PSTR("%10f,%10f  %s  %s\n"),
-                        1.0e-7f*test_points[i].point.x,
-                        1.0e-7f*test_points[i].point.y,
+                        1.0e-7*test_points[i].point.x,
+                        1.0e-7*test_points[i].point.y,
                         result ? "OUTSIDE" : "INSIDE ",
                         result == test_points[i].outside ? "PASS" : "FAIL");
         if (result != test_points[i].outside) {

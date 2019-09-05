@@ -19,6 +19,8 @@
 
 #include "AP_Math.h"
 
+#define HALF_SQRT_2 0.70710678118654757
+
 // create a rotation matrix given some euler angles
 // this is based on http://gentlenav.googlecode.com/files/EulerAngles.pdf
 template <typename T>
@@ -45,7 +47,7 @@ void Matrix3<T>::from_euler(float roll, float pitch, float yaw)
 // calculate euler angles from a rotation matrix
 // this is based on http://gentlenav.googlecode.com/files/EulerAngles.pdf
 template <typename T>
-void Matrix3<T>::to_euler(float *roll, float *pitch, float *yaw) const
+void Matrix3<T>::to_euler(float *roll, float *pitch, float *yaw)
 {
     if (pitch != NULL) {
         *pitch = -safe_asin(c.x);
@@ -63,7 +65,7 @@ void Matrix3<T>::to_euler(float *roll, float *pitch, float *yaw) const
 template <typename T>
 void Matrix3<T>::rotate(const Vector3<T> &g)
 {
-    Matrix3<T> temp_matrix;
+    Matrix3f temp_matrix;
     temp_matrix.a.x = a.y * g.z - a.z * g.y;
     temp_matrix.a.y = a.z * g.x - a.x * g.z;
     temp_matrix.a.z = a.x * g.y - a.y * g.x;
@@ -82,7 +84,7 @@ void Matrix3<T>::rotate(const Vector3<T> &g)
 template <typename T>
 void Matrix3<T>::rotateXY(const Vector3<T> &g)
 {
-    Matrix3<T> temp_matrix;
+    Matrix3f temp_matrix;
     temp_matrix.a.x = -a.z * g.y;
     temp_matrix.a.y = a.z * g.x;
     temp_matrix.a.z = a.x * g.y - a.y * g.x;
@@ -94,40 +96,6 @@ void Matrix3<T>::rotateXY(const Vector3<T> &g)
     temp_matrix.c.z = c.x * g.y - c.y * g.x;
 
     (*this) += temp_matrix;
-}
-
-// apply an additional inverse rotation to a rotation matrix but 
-// only use X, Y elements from rotation vector
-template <typename T>
-void Matrix3<T>::rotateXYinv(const Vector3<T> &g)
-{
-    Matrix3<T> temp_matrix;
-    temp_matrix.a.x =   a.z * g.y;
-    temp_matrix.a.y = - a.z * g.x;
-    temp_matrix.a.z = - a.x * g.y + a.y * g.x;
-    temp_matrix.b.x =   b.z * g.y;
-    temp_matrix.b.y = - b.z * g.x;
-    temp_matrix.b.z = - b.x * g.y + b.y * g.x;
-    temp_matrix.c.x =   c.z * g.y;
-    temp_matrix.c.y = - c.z * g.x;
-    temp_matrix.c.z = - c.x * g.y + c.y * g.x;
-
-    (*this) += temp_matrix;
-}
-
-/*
-  re-normalise a rotation matrix
-*/
-template <typename T>
-void Matrix3<T>::normalize(void)
-{
-    float error = a * b;
-    Vector3<T> t0 = a - (b * (0.5f * error));
-    Vector3<T> t1 = b - (a * (0.5f * error));
-    Vector3<T> t2 = t0 % t1;
-    a = t0 * (1.0f / t0.length());
-    b = t1 * (1.0f / t1.length());
-    c = t2 * (1.0f / t2.length());
 }
 
 // multiplication by a vector
@@ -193,26 +161,10 @@ void Matrix3<T>::zero(void)
 template void Matrix3<float>::zero(void);
 template void Matrix3<float>::rotate(const Vector3<float> &g);
 template void Matrix3<float>::rotateXY(const Vector3<float> &g);
-template void Matrix3<float>::rotateXYinv(const Vector3<float> &g);
-template void Matrix3<float>::normalize(void);
 template void Matrix3<float>::from_euler(float roll, float pitch, float yaw);
-template void Matrix3<float>::to_euler(float *roll, float *pitch, float *yaw) const;
+template void Matrix3<float>::to_euler(float *roll, float *pitch, float *yaw);
 template Vector3<float> Matrix3<float>::operator *(const Vector3<float> &v) const;
 template Vector3<float> Matrix3<float>::mul_transpose(const Vector3<float> &v) const;
 template Matrix3<float> Matrix3<float>::operator *(const Matrix3<float> &m) const;
 template Matrix3<float> Matrix3<float>::transposed(void) const;
 template Vector2<float> Matrix3<float>::mulXY(const Vector3<float> &v) const;
-
-#if HAL_CPU_CLASS >= HAL_CPU_CLASS_75
-template void Matrix3<double>::zero(void);
-template void Matrix3<double>::rotate(const Vector3<double> &g);
-template void Matrix3<double>::rotateXY(const Vector3<double> &g);
-template void Matrix3<double>::rotateXYinv(const Vector3<double> &g);
-template void Matrix3<double>::from_euler(float roll, float pitch, float yaw);
-template void Matrix3<double>::to_euler(float *roll, float *pitch, float *yaw) const;
-template Vector3<double> Matrix3<double>::operator *(const Vector3<double> &v) const;
-template Vector3<double> Matrix3<double>::mul_transpose(const Vector3<double> &v) const;
-template Matrix3<double> Matrix3<double>::operator *(const Matrix3<double> &m) const;
-template Matrix3<double> Matrix3<double>::transposed(void) const;
-template Vector2<double> Matrix3<double>::mulXY(const Vector3<double> &v) const;
-#endif

@@ -83,14 +83,12 @@ def drive_APMrover2(viewerip=None, map=False):
     if map:
         options += ' --map'
 
-    home = "%f,%f,%u,%u" % (HOME.lat, HOME.lng, HOME.alt, HOME.heading)
-    sil = util.start_SIL('APMrover2', wipe=True, model='rover', home=home, speedup=10)
+    sil = util.start_SIL('APMrover2', wipe=True)
     mavproxy = util.start_MAVProxy_SIL('APMrover2', options=options)
-
-    print("WAITING FOR PARAMETERS")
     mavproxy.expect('Received [0-9]+ parameters')
 
     # setup test parameters
+    mavproxy.send('param set SYSID_THISMAV %u\n' % random.randint(100, 200))
     mavproxy.send("param load %s/Rover.parm\n" % testdir)
     mavproxy.expect('Loaded [0-9]+ parameters')
 
@@ -98,7 +96,15 @@ def drive_APMrover2(viewerip=None, map=False):
     util.pexpect_close(mavproxy)
     util.pexpect_close(sil)
 
-    sil = util.start_SIL('APMrover2', model='rover', home=home, speedup=10)
+    sim_cmd = util.reltopdir('Tools/autotest/pysim/sim_rover.py') + ' --rate=50 --home=%f,%f,%u,%u' % (
+        HOME.lat, HOME.lng, HOME.alt, HOME.heading)
+
+    runsim = pexpect.spawn(sim_cmd, logfile=sys.stdout, timeout=10)
+    runsim.delaybeforesend = 0
+    util.pexpect_autoclose(runsim)
+    runsim.expect('Starting at lat')
+
+    sil = util.start_SIL('APMrover2')
     mavproxy = util.start_MAVProxy_SIL('APMrover2', options=options)
     mavproxy.expect('Logging to (\S+)')
     logfile = mavproxy.match.group(1)
@@ -118,7 +124,7 @@ def drive_APMrover2(viewerip=None, map=False):
     util.expect_setup_callback(mavproxy, expect_callback)
 
     expect_list_clear()
-    expect_list_extend([sil, mavproxy])
+    expect_list_extend([runsim, sil, mavproxy])
 
     print("Started simulator")
 
@@ -145,9 +151,6 @@ def drive_APMrover2(viewerip=None, map=False):
         if not drive_mission(mavproxy, mav, os.path.join(testdir, "rover1.txt")):
             print("Failed mission")
             failed = True
-        if not log_download(mavproxy, mav, util.reltopdir("../buildlogs/APMrover2-log.bin")):
-            print("Failed log download")
-            failed = True
 #        if not drive_left_circuit(mavproxy, mav):
 #            print("Failed left circuit")
 #            failed = True
@@ -161,6 +164,7 @@ def drive_APMrover2(viewerip=None, map=False):
     mav.close()
     util.pexpect_close(mavproxy)
     util.pexpect_close(sil)
+    util.pexpect_close(runsim)
 
     if os.path.exists('APMrover2-valgrind.log'):
         os.chmod('APMrover2-valgrind.log', 0644)

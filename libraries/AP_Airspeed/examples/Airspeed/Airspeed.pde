@@ -34,22 +34,10 @@
 #include <AP_Airspeed.h>
 #include <AP_Vehicle.h>
 #include <AP_Notify.h>
-#include <AP_Compass.h>
-#include <AP_Declination.h>
-#include <AP_AHRS.h>
-#include <AP_NavEKF.h>
-#include <AP_Terrain.h>
 #include <DataFlash.h>
-#include <AP_Baro.h>
 #include <GCS_MAVLink.h>
-#include <AP_Mission.h>
-#include <StorageManager.h>
-#include <AP_Terrain.h>
 #include <AP_GPS.h>
 #include <AP_InertialSensor.h>
-#include <AP_BattMonitor.h>
-#include <AP_Rally.h>
-#include <AP_RangeFinder.h>
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_APM1
 AP_ADC_ADS7844 apm1_adc;
@@ -65,10 +53,8 @@ void setup()
 {
     hal.console->println("ArduPilot Airspeed library test");
 
-    AP_Param::set_object_value(&airspeed, airspeed.var_info, "_PIN", 65);
-
     airspeed.init();
-    airspeed.calibrate(false);
+    airspeed.calibrate();
 }
 
 void loop(void)

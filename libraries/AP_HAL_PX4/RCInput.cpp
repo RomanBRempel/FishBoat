@@ -17,25 +17,11 @@ void PX4RCInput::init(void* unused)
 		hal.scheduler->panic("Unable to subscribe to input_rc");		
 	}
 	clear_overrides();
-        pthread_mutex_init(&rcin_mutex, NULL);
 }
 
-bool PX4RCInput::new_input() 
+uint8_t PX4RCInput::valid_channels() 
 {
-    pthread_mutex_lock(&rcin_mutex);
-    bool valid = _rcin.timestamp_last_signal != _last_read || _override_valid;
-    _last_read = _rcin.timestamp_last_signal;
-    _override_valid = false;
-    pthread_mutex_unlock(&rcin_mutex);
-    return valid;
-}
-
-uint8_t PX4RCInput::num_channels() 
-{
-    pthread_mutex_lock(&rcin_mutex);
-    uint8_t n = _rcin.channel_count;
-    pthread_mutex_unlock(&rcin_mutex);
-    return n;
+	return _rcin.timestamp != _last_read || _override_valid;
 }
 
 uint16_t PX4RCInput::read(uint8_t ch) 
@@ -43,19 +29,15 @@ uint16_t PX4RCInput::read(uint8_t ch)
 	if (ch >= RC_INPUT_MAX_CHANNELS) {
 		return 0;
 	}
-        pthread_mutex_lock(&rcin_mutex);
+	_last_read = _rcin.timestamp;
+	_override_valid = false;
 	if (_override[ch]) {
-            uint16_t v = _override[ch];
-            pthread_mutex_unlock(&rcin_mutex);
-            return v;
+		return _override[ch];
 	}
 	if (ch >= _rcin.channel_count) {
-            pthread_mutex_unlock(&rcin_mutex);
-            return 0;
+		return 0;
 	}
-	uint16_t v = _rcin.values[ch];
-        pthread_mutex_unlock(&rcin_mutex);
-        return v;
+	return _rcin.values[ch];
 }
 
 uint8_t PX4RCInput::read(uint16_t* periods, uint8_t len) 
@@ -105,12 +87,12 @@ void PX4RCInput::_timer_tick(void)
 	perf_begin(_perf_rcin);
 	bool rc_updated = false;
 	if (orb_check(_rc_sub, &rc_updated) == 0 && rc_updated) {
-            pthread_mutex_lock(&rcin_mutex);
-            orb_copy(ORB_ID(input_rc), _rc_sub, &_rcin);
-            pthread_mutex_unlock(&rcin_mutex);
+		orb_copy(ORB_ID(input_rc), _rc_sub, &_rcin);
+		_last_input = _rcin.timestamp;
+	} else if (hrt_absolute_time() - _last_input > 300000) {
+		// we've lost RC input, force channel 3 low
+		_rcin.values[2] = 900;
 	}
-        // note, we rely on the vehicle code checking new_input() 
-        // and a timeout for the last valid input to handle failsafe
 	perf_end(_perf_rcin);
 }
 

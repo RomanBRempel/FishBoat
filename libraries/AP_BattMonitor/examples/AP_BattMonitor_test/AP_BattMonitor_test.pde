@@ -14,23 +14,6 @@
 #include <AP_HAL_PX4.h>
 #include <AP_HAL_Empty.h>
 #include <AP_BattMonitor.h>
-#include <GCS_MAVLink.h>
-#include <DataFlash.h>
-#include <AP_GPS.h>
-#include <AP_InertialSensor.h>
-#include <AP_Baro.h>
-#include <Filter.h>
-#include <AP_AHRS.h>
-#include <AP_Compass.h>
-#include <AP_Declination.h>
-#include <AP_Airspeed.h>
-#include <AP_Vehicle.h>
-#include <AP_NavEKF.h>
-#include <AP_Notify.h>
-#include <AP_Mission.h>
-#include <StorageManager.h>
-#include <AP_Terrain.h>
-#include <AP_RangeFinder.h>
 
 const AP_HAL::HAL& hal = AP_HAL_BOARD_DRIVER;
 
@@ -40,11 +23,9 @@ uint32_t timer;
 void setup() {
     hal.console->println("Battery monitor library test");
 
-    // set battery monitor to smbus
-    battery_mon.set_monitoring(0, AP_BattMonitor::BattMonitor_TYPE_SMBUS);
-
     // initialise the battery monitor
     battery_mon.init();
+    battery_mon.set_monitoring(AP_BATT_MONITOR_VOLTAGE_AND_CURRENT);
 
     hal.scheduler->delay(1000);
     timer = hal.scheduler->millis();
