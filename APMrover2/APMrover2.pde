@@ -874,8 +874,8 @@ static void update_current_mode(void)
 
     case HOLD:
         // hold position - stop motors and center steering
-        channel_throttle->servo_out = 0;
-        channel_steer->servo_out = 0;
+        channel_throttle->servo_out = g.throttle_min.get();
+        channel_steer->servo_out = g.throttle_min.get();
         set_reverse(false);
         break;
 
@@ -904,7 +904,7 @@ static void update_navigation()
         calc_nav_steer();
         if (verify_RTL()) {  
             channel_throttle->servo_out = g.throttle_min.get();
-            set_mode(HOLD);
+            set_mode(MANUAL);
         }
         break;
 
@@ -916,7 +916,7 @@ static void update_navigation()
             if (verify_RTL()) {
                 // we have reached destination so stop where we are
                 channel_throttle->servo_out = g.throttle_min.get();
-                channel_steer->servo_out = 0;
+                channel_steer->servo_out = g.throttle_min.get();
                 lateral_acceleration = 0;
             }
         }
