@@ -6,15 +6,10 @@
 static int8_t   setup_radio                             (uint8_t argc, const Menu::arg *argv);
 static int8_t   setup_show                              (uint8_t argc, const Menu::arg *argv);
 static int8_t   setup_factory                   (uint8_t argc, const Menu::arg *argv);
-static int8_t   setup_flightmodes               (uint8_t argc, const Menu::arg *argv);
-static int8_t   setup_level                             (uint8_t argc, const Menu::arg *argv);
-#if !defined( __AVR_ATmega1280__ )
 static int8_t   setup_accel_scale                       (uint8_t argc, const Menu::arg *argv);
 static int8_t   setup_set                               (uint8_t argc, const Menu::arg *argv);
-#endif
 static int8_t   setup_erase                             (uint8_t argc, const Menu::arg *argv);
 static int8_t   setup_compass                   (uint8_t argc, const Menu::arg *argv);
-static int8_t   setup_declination               (uint8_t argc, const Menu::arg *argv);
 
 
 // Command/function table for the setup menu
@@ -23,17 +18,10 @@ static const struct Menu::command setup_menu_commands[] PROGMEM = {
     // =======          ===============
     {"reset",                       setup_factory},
     {"radio",                       setup_radio},
-    {"modes",                       setup_flightmodes},
-    {"level",                       setup_level},
-#if !defined( __AVR_ATmega1280__ )
     {"accel",                       setup_accel_scale},
-#endif
     {"compass",                     setup_compass},
-    {"declination",         setup_declination},
     {"show",                        setup_show},
-#if !defined( __AVR_ATmega1280__ )
     {"set",                         setup_set},
-#endif
     {"erase",                       setup_erase},
 };
 
@@ -62,8 +50,6 @@ setup_mode(uint8_t argc, const Menu::arg *argv)
 static int8_t
 setup_show(uint8_t argc, const Menu::arg *argv)
 {
-
-#if !defined( __AVR_ATmega1280__ )
     AP_Param *param;
     ap_var_type type;
 
@@ -81,15 +67,11 @@ setup_show(uint8_t argc, const Menu::arg *argv)
         AP_Param::show(param, argv[1].str, type, cliSerial);
         return 0;
     }
-#endif
 
     AP_Param::show_all(cliSerial);
 
     return(0);
 }
-
-
-#if !defined( __AVR_ATmega1280__ )
 
 //Set a parameter to a specified value. It will cast the value to the current type of the
 //parameter and make sure it fits in case of INT8 and INT16
@@ -149,7 +131,6 @@ static int8_t setup_set(uint8_t argc, const Menu::arg *argv)
 
     return 0;
 }
-#endif
 
 // Initialise the EEPROM to 'factory' settings (mostly defined in APM_Config.h or via defaults).
 // Called by the setup menu 'factoryreset' command.
@@ -167,7 +148,7 @@ setup_factory(uint8_t argc, const Menu::arg *argv)
     if (('y' != c) && ('Y' != c))
         return(-1);
     AP_Param::erase_all();
-    cliSerial->printf_P(PSTR("\nFACTORY RESET complete - please reset APM to continue"));
+    cliSerial->printf_P(PSTR("\nFACTORY RESET complete - please reset board to continue"));
 
     //default_flight_modes();   // This will not work here.  Replacement code located in init_ardupilot()
 
@@ -187,7 +168,7 @@ setup_radio(uint8_t argc, const Menu::arg *argv)
     uint8_t i;
 
     for(i = 0; i < 100; i++) {
-        delay(20);
+        hal.scheduler->delay(20);
         read_radio();
     }
 
@@ -195,7 +176,7 @@ setup_radio(uint8_t argc, const Menu::arg *argv)
     if(channel_roll->radio_in < 500) {
         while(1) {
             cliSerial->printf_P(PSTR("\nNo radio; Check connectors."));
-            delay(1000);
+            hal.scheduler->delay(1000);
             // stop here
         }
     }
@@ -229,7 +210,7 @@ setup_radio(uint8_t argc, const Menu::arg *argv)
     cliSerial->printf_P(PSTR("\nMove all controls to each extreme. Hit Enter to save: \n"));
     while(1) {
 
-        delay(20);
+        hal.scheduler->delay(20);
         // Filters radio input - adjust filters in the radio.pde file
         // ----------------------------------------------------------
         read_radio();
@@ -266,97 +247,6 @@ setup_radio(uint8_t argc, const Menu::arg *argv)
 
 
 static int8_t
-setup_flightmodes(uint8_t argc, const Menu::arg *argv)
-{
-    uint8_t switchPosition, mode = 0;
-
-    cliSerial->printf_P(PSTR("\nMove RC toggle switch to each position to edit, move aileron stick to select modes."));
-    print_hit_enter();
-    trim_radio();
-
-    while(1) {
-        delay(20);
-        read_radio();
-        switchPosition = readSwitch();
-
-
-        // look for control switch change
-        if (oldSwitchPosition != switchPosition) {
-            // force position 5 to MANUAL
-            if (switchPosition > 4) {
-                flight_modes[switchPosition] = MANUAL;
-            }
-            // update our current mode
-            mode = flight_modes[switchPosition];
-
-            // update the user
-            print_switch(switchPosition, mode);
-
-            // Remember switch position
-            oldSwitchPosition = switchPosition;
-        }
-
-        // look for stick input
-        int16_t radioInputSwitch = radio_input_switch();
-
-        if (radioInputSwitch != 0) {
-
-            mode += radioInputSwitch;
-
-            while (
-                mode != MANUAL &&
-                mode != CIRCLE &&
-                mode != STABILIZE &&
-                mode != TRAINING &&
-                mode != ACRO &&
-                mode != FLY_BY_WIRE_A &&
-                mode != FLY_BY_WIRE_B &&
-                mode != CRUISE &&
-                mode != AUTO &&
-                mode != RTL &&
-                mode != LOITER)
-            {
-                if (mode < MANUAL)
-                    mode = LOITER;
-                else if (mode >LOITER)
-                    mode = MANUAL;
-                else
-                    mode += radioInputSwitch;
-            }
-
-            // Override position 5
-            if(switchPosition > 4)
-                mode = MANUAL;
-
-            // save new mode
-            flight_modes[switchPosition] = mode;
-
-            // print new mode
-            print_switch(switchPosition, mode);
-        }
-
-        // escape hatch
-        if(cliSerial->available() > 0) {
-            // save changes
-            for (mode=0; mode<6; mode++)
-                flight_modes[mode].save();
-            report_flight_modes();
-            print_done();
-            return (0);
-        }
-    }
-}
-
-static int8_t
-setup_declination(uint8_t argc, const Menu::arg *argv)
-{
-    compass.set_declination(radians(argv[1].f));
-    report_compass();
-    return 0;
-}
-
-
-static int8_t
 setup_erase(uint8_t argc, const Menu::arg *argv)
 {
     int c;
@@ -373,14 +263,6 @@ setup_erase(uint8_t argc, const Menu::arg *argv)
     return 0;
 }
 
-static int8_t
-setup_level(uint8_t argc, const Menu::arg *argv)
-{
-    startup_INS_ground(true);
-    return 0;
-}
-
-#if !defined( __AVR_ATmega1280__ )
 /*
   handle full accelerometer calibration via user dialog
  */
@@ -405,7 +287,6 @@ setup_accel_scale(uint8_t argc, const Menu::arg *argv)
     report_ins();
     return(0);
 }
-#endif
 
 static int8_t
 setup_compass(uint8_t argc, const Menu::arg *argv)
@@ -421,7 +302,7 @@ setup_compass(uint8_t argc, const Menu::arg *argv)
         g.compass_enabled = false;
 
     } else if (!strcmp_P(argv[1].str, PSTR("reset"))) {
-        compass.set_offsets(0,0,0);
+        compass.set_and_save_offsets(0,0,0,0);
 
     } else {
         cliSerial->printf_P(PSTR("\nOptions:[on,off,reset]\n"));
@@ -461,51 +342,16 @@ static void report_ins()
 
 static void report_compass()
 {
-    //print_blanks(2);
-    cliSerial->printf_P(PSTR("Compass: "));
-
-    switch (compass.product_id) {
-    case AP_COMPASS_TYPE_HMC5883L:
-        cliSerial->println_P(PSTR("HMC5883L"));
-        break;
-    case AP_COMPASS_TYPE_HMC5843:
-        cliSerial->println_P(PSTR("HMC5843"));
-        break;
-    case AP_COMPASS_TYPE_HIL:
-        cliSerial->println_P(PSTR("HIL"));
-        break;
-    default:
-        cliSerial->println_P(PSTR("??"));
-        break;
-    }
-
-    print_divider();
-
+    cliSerial->print_P(PSTR("Compass: "));
     print_enabled(g.compass_enabled);
-
-    // mag declination
-    cliSerial->printf_P(PSTR("Mag Declination: %4.4f\n"),
-                    degrees(compass.get_declination()));
 
     Vector3f offsets = compass.get_offsets();
 
     // mag offsets
     cliSerial->printf_P(PSTR("Mag offsets: %4.4f, %4.4f, %4.4f\n"),
-                    offsets.x,
-                    offsets.y,
-                    offsets.z);
-    print_blanks(2);
-}
-
-static void report_flight_modes()
-{
-    //print_blanks(2);
-    cliSerial->printf_P(PSTR("Flight modes\n"));
-    print_divider();
-
-    for(int16_t i = 0; i < 6; i++ ) {
-        print_switch(i, flight_modes[i]);
-    }
+                    (double)offsets.x,
+                    (double)offsets.y,
+                    (double)offsets.z);
     print_blanks(2);
 }
 
@@ -525,14 +371,6 @@ print_radio_values()
     cliSerial->printf_P(PSTR("CH7: %d | %d | %d\n"), (int)g.rc_7.radio_min, (int)g.rc_7.radio_trim, (int)g.rc_7.radio_max);
     cliSerial->printf_P(PSTR("CH8: %d | %d | %d\n"), (int)g.rc_8.radio_min, (int)g.rc_8.radio_trim, (int)g.rc_8.radio_max);
 
-}
-
-static void
-print_switch(uint8_t p, uint8_t m)
-{
-    cliSerial->printf_P(PSTR("Pos %d: "),p);
-    print_flight_mode(cliSerial, m);
-    cliSerial->println();
 }
 
 static void
@@ -559,40 +397,10 @@ print_divider(void)
     cliSerial->println();
 }
 
-static int8_t
-radio_input_switch(void)
-{
-    static int8_t bouncer = 0;
-
-
-    if (int16_t(channel_roll->radio_in - channel_roll->radio_trim) > 100) {
-        bouncer = 10;
-    }
-    if (int16_t(channel_roll->radio_in - channel_roll->radio_trim) < -100) {
-        bouncer = -10;
-    }
-    if (bouncer >0) {
-        bouncer--;
-    }
-    if (bouncer <0) {
-        bouncer++;
-    }
-
-    if (bouncer == 1 || bouncer == -1) {
-        return bouncer;
-    } else {
-        return 0;
-    }
-}
-
-
 static void zero_eeprom(void)
 {
-    uint8_t b = 0;
     cliSerial->printf_P(PSTR("\nErasing EEPROM\n"));
-    for (uint16_t i = 0; i < EEPROM_MAX_ADDR; i++) {
-        hal.storage->write_byte(i, b);
-    }
+    StorageManager::erase();
     cliSerial->printf_P(PSTR("done\n"));
 }
 
@@ -611,12 +419,12 @@ print_accel_offsets_and_scaling(void)
     Vector3f accel_offsets = ins.get_accel_offsets();
     Vector3f accel_scale = ins.get_accel_scale();
     cliSerial->printf_P(PSTR("Accel offsets: %4.2f, %4.2f, %4.2f\tscale: %4.2f, %4.2f, %4.2f\n"),
-                    (float)accel_offsets.x,                           // Pitch
-                    (float)accel_offsets.y,                           // Roll
-                    (float)accel_offsets.z,                           // YAW
-                    (float)accel_scale.x,                             // Pitch
-                    (float)accel_scale.y,                             // Roll
-                    (float)accel_scale.z);                            // YAW
+                    (double)accel_offsets.x,                           // Pitch
+                    (double)accel_offsets.y,                           // Roll
+                    (double)accel_offsets.z,                           // YAW
+                    (double)accel_scale.x,                             // Pitch
+                    (double)accel_scale.y,                             // Roll
+                    (double)accel_scale.z);                            // YAW
 }
 
 static void
@@ -624,9 +432,9 @@ print_gyro_offsets(void)
 {
     Vector3f gyro_offsets = ins.get_gyro_offsets();
     cliSerial->printf_P(PSTR("Gyro offsets: %4.2f, %4.2f, %4.2f\n"),
-                    (float)gyro_offsets.x,
-                    (float)gyro_offsets.y,
-                    (float)gyro_offsets.z);
+                    (double)gyro_offsets.x,
+                    (double)gyro_offsets.y,
+                    (double)gyro_offsets.z);
 }
 
 

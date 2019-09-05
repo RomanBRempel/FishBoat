@@ -35,27 +35,45 @@ extern const AP_HAL::HAL& hal;
 bool ToshibaLED_PX4::hw_init()
 {
     // open the rgb led device
-    _rgbled_fd = open(RGBLED_DEVICE_PATH, 0);
+    _rgbled_fd = open(RGBLED0_DEVICE_PATH, 0);
     if (_rgbled_fd == -1) {
-        hal.console->printf("Unable to open " RGBLED_DEVICE_PATH);
+        hal.console->printf("Unable to open " RGBLED0_DEVICE_PATH);
         return false;
     }
     ioctl(_rgbled_fd, RGBLED_SET_MODE, (unsigned long)RGBLED_MODE_ON);
+    last.v = 0;
+    next.v = 0;
+    hal.scheduler->register_io_process(AP_HAL_MEMBERPROC(&ToshibaLED_PX4::update_timer));
     return true;
 }
 
 // set_rgb - set color as a combination of red, green and blue values
 bool ToshibaLED_PX4::hw_set_rgb(uint8_t red, uint8_t green, uint8_t blue)
 {
-    rgbled_rgbset_t v;
-
-    v.red   = red;
-    v.green = green;
-    v.blue  = blue;
-
-    int ret = ioctl(_rgbled_fd, RGBLED_SET_RGB, (unsigned long)&v);
-    return (ret == 0);
+    union rgb_value v;
+    v.r = red;
+    v.g = green;
+    v.b = blue;
+    // this does an atomic 32 bit update
+    next.v = v.v;
+    return true;
 }
 
+void ToshibaLED_PX4::update_timer(void)
+{
+    if (last.v == next.v) {
+        return;
+    }
+    rgbled_rgbset_t v;
+    union rgb_value newv;
+    newv.v = next.v;
+    v.red   = newv.r;
+    v.green = newv.g;
+    v.blue  = newv.b;
+
+    ioctl(_rgbled_fd, RGBLED_SET_RGB, (unsigned long)&v);
+
+    last.v = next.v;
+}
 
 #endif // CONFIG_HAL_BOARD == HAL_BOARD_PX4

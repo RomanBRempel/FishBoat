@@ -40,10 +40,18 @@ class AP_Airspeed
 {
 public:
     // constructor
-    AP_Airspeed(const AP_Vehicle::FixedWing &parms) : 
+    AP_Airspeed(const AP_Vehicle::FixedWing &parms) :
+        _raw_airspeed(0.0f),
+        _airspeed(0.0f),
+        _last_pressure(0.0f),
+        _raw_pressure(0.0f),
         _EAS2TAS(1.0f),
         _healthy(false),
+        _hil_set(false),
+        _last_update_ms(0),
         _calibration(parms),
+        _last_saved_ratio(0.0f),
+        _counter(0),
         analog(_pin)
     {
 		AP_Param::setup_object_defaults(this, var_info);
@@ -56,7 +64,7 @@ public:
 
     // calibrate the airspeed. This must be called on startup if the
     // altitude/climb_rate/acceleration interfaces are ever used
-    void            calibrate();
+    void            calibrate(bool in_startup);
 
     // return the current airspeed in m/s
     float           get_airspeed(void) const {
@@ -78,6 +86,9 @@ public:
         return _ratio;
     }
 
+    // get temperature if available
+    bool get_temperature(float &temperature);
+
     // set the airspeed ratio (dimensionless)
     void        set_airspeed_ratio(float ratio) {
         _ratio.set(ratio);
@@ -85,7 +96,7 @@ public:
 
     // return true if airspeed is enabled, and airspeed use is set
     bool        use(void) const {
-        return _enable && _use && _offset != 0 && _healthy;
+        return _enable && _use;
     }
 
     // return true if airspeed is enabled
@@ -106,7 +117,17 @@ public:
     // return the differential pressure in Pascal for the last
     // airspeed reading. Used by the calibration code
     float get_differential_pressure(void) const {
-        return max(_last_pressure, 0);
+        return _last_pressure;
+    }
+
+    // return the current offset
+    float get_offset(void) const {
+        return _offset;
+    }
+
+    // return the current raw pressure
+    float get_raw_pressure(void) const {
+        return _raw_pressure;
     }
 
     // set the apparent to true airspeed ratio
@@ -126,10 +147,20 @@ public:
 	void log_mavlink_send(mavlink_channel_t chan, const Vector3f &vground);
 
     // return health status of sensor
-    bool healthy(void) const { return _healthy; }
+    bool healthy(void) const { return _healthy && fabsf(_offset) > 0; }
+
+    void setHIL(float pressure) { _healthy=_hil_set=true; _hil_pressure=pressure; };
+
+    // return time in ms of last update
+    uint32_t last_update_ms(void) const { return _last_update_ms; }
+
+    void setHIL(float airspeed, float diff_pressure, float temperature);
 
     static const struct AP_Param::GroupInfo var_info[];
 
+    enum pitot_tube_order { PITOT_TUBE_ORDER_POSITIVE =0, 
+                            PITOT_TUBE_ORDER_NEGATIVE =1, 
+                            PITOT_TUBE_ORDER_AUTO     =2};
 
 private:
     AP_Float        _offset;
@@ -138,11 +169,17 @@ private:
     AP_Int8         _enable;
     AP_Int8         _pin;
     AP_Int8         _autocal;
+    AP_Int8         _tube_order;
+    AP_Int8         _skip_cal;
     float           _raw_airspeed;
     float           _airspeed;
     float			_last_pressure;
+    float			_raw_pressure;
     float           _EAS2TAS;
-    bool		    _healthy;
+    bool		    _healthy:1;
+    bool		    _hil_set:1;
+    float           _hil_pressure;
+    uint32_t        _last_update_ms;
 
     Airspeed_Calibration _calibration;
     float _last_saved_ratio;
@@ -151,12 +188,15 @@ private:
     float get_pressure(void);
 
     AP_Airspeed_Analog analog;
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
+#if CONFIG_HAL_BOARD == HAL_BOARD_PX4 || CONFIG_HAL_BOARD == HAL_BOARD_VRBRAIN
     AP_Airspeed_PX4    digital;
 #else
     AP_Airspeed_I2C    digital;
 #endif
 };
+
+// the virtual pin for digital airspeed sensors
+#define AP_AIRSPEED_I2C_PIN 65
 
 #endif // __AP_AIRSPEED_H__
 

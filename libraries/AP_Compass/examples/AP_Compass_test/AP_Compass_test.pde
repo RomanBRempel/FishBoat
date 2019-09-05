@@ -6,23 +6,42 @@
 #include <AP_Common.h>
 #include <AP_Progmem.h>
 #include <AP_Param.h>
+#include <StorageManager.h>
 #include <AP_HAL.h>
 #include <AP_HAL_AVR.h>
 #include <AP_HAL_PX4.h>
 #include <AP_HAL_Linux.h>
+#include <AP_HAL_FLYMAPLE.h>
 #include <AP_HAL_Empty.h>
+#include <AP_HAL_VRBRAIN.h>
 
 #include <AP_Math.h>    // ArduPilot Mega Vector/Matrix math Library
 #include <AP_Declination.h>
 #include <AP_Compass.h> // Compass Library
+#include <GCS_MAVLink.h>
+#include <AP_Scheduler.h>
+#include <DataFlash.h>
+#include <AP_GPS.h>
+#include <AP_Vehicle.h>
+#include <AP_InertialSensor.h>
+#include <Filter.h>
+#include <AP_Baro.h>
+#include <AP_AHRS.h>
+#include <AP_Airspeed.h>
+#include <AP_NavEKF.h>
+#include <AP_ADC.h>
+#include <AP_ADC_AnalogSource.h>
+#include <AP_Notify.h>
+#include <AP_Mission.h>
+#include <AP_Terrain.h>
+#include <AP_Rally.h>
+#include <AP_BattMonitor.h>
+#include <AP_RangeFinder.h>
 
 const AP_HAL::HAL& hal = AP_HAL_BOARD_DRIVER;
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_PX4
-AP_Compass_PX4 compass;
-#else
-AP_Compass_HMC5843 compass;
-#endif
+static Compass compass;
+
 uint32_t timer;
 
 void setup() {
@@ -32,29 +51,10 @@ void setup() {
         hal.console->println("compass initialisation failed!");
         while (1) ;
     }
-    hal.console->println("init done");
+    hal.console->printf("init done - %u compasses detected\n", compass.get_count());
 
-    compass.set_offsets(0,0,0); // set offsets to account for surrounding interference
-    compass.set_declination(ToRad(0.0)); // set local difference between magnetic north and true north
-
-    hal.console->print("Compass auto-detected as: ");
-    switch( compass.product_id ) {
-    case AP_COMPASS_TYPE_HIL:
-        hal.console->println("HIL");
-        break;
-    case AP_COMPASS_TYPE_HMC5843:
-        hal.console->println("HMC5843");
-        break;
-    case AP_COMPASS_TYPE_HMC5883L:
-        hal.console->println("HMC5883L");
-        break;
-    case AP_COMPASS_TYPE_PX4:
-        hal.console->println("PX4");
-        break;
-    default:
-        hal.console->println("unknown");
-        break;
-    }
+    compass.set_and_save_offsets(0,0,0,0); // set offsets to account for surrounding interference
+    compass.set_declination(ToRad(0.0f)); // set local difference between magnetic north and true north
 
     hal.scheduler->delay(1000);
     timer = hal.scheduler->micros();
@@ -73,7 +73,7 @@ void loop()
         unsigned long read_time = hal.scheduler->micros() - timer;
         float heading;
 
-        if (!compass.healthy) {
+        if (!compass.healthy()) {
             hal.console->println("not healthy");
             return;
         }
@@ -81,23 +81,24 @@ void loop()
 	// use roll = 0, pitch = 0 for this example
 	dcm_matrix.from_euler(0, 0, 0);
         heading = compass.calculate_heading(dcm_matrix);
-        compass.null_offsets();
+        compass.learn_offsets();
 
         // capture min
-        if( compass.mag_x < min[0] )
-            min[0] = compass.mag_x;
-        if( compass.mag_y < min[1] )
-            min[1] = compass.mag_y;
-        if( compass.mag_z < min[2] )
-            min[2] = compass.mag_z;
+        const Vector3f &mag = compass.get_field();
+        if( mag.x < min[0] )
+            min[0] = mag.x;
+        if( mag.y < min[1] )
+            min[1] = mag.y;
+        if( mag.z < min[2] )
+            min[2] = mag.z;
 
         // capture max
-        if( compass.mag_x > max[0] )
-            max[0] = compass.mag_x;
-        if( compass.mag_y > max[1] )
-            max[1] = compass.mag_y;
-        if( compass.mag_z > max[2] )
-            max[2] = compass.mag_z;
+        if( mag.x > max[0] )
+            max[0] = mag.x;
+        if( mag.y > max[1] )
+            max[1] = mag.y;
+        if( mag.z > max[2] )
+            max[2] = mag.z;
 
         // calculate offsets
         offset[0] = -(max[0]+min[0])/2;
@@ -107,9 +108,9 @@ void loop()
         // display all to user
         hal.console->printf("Heading: %.2f (%3d,%3d,%3d) i2c error: %u",
 			    ToDeg(heading),
-			    (int)compass.mag_x,
-			    (int)compass.mag_y,
-			    (int)compass.mag_z, 
+			    (int)mag.x,
+			    (int)mag.y,
+			    (int)mag.z, 
 			    (unsigned)hal.i2c->lockup_count());
 
         // display offsets

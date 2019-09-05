@@ -3,15 +3,43 @@
 // Unit tests for the AP_Math euler code
 //
 
+#include <AP_HAL.h>
 #include <stdlib.h>
 #include <AP_Common.h>
 #include <AP_Progmem.h>
 #include <AP_Param.h>
-#include <AP_Math.h>
-#include <AP_HAL.h>
-
 #include <AP_HAL_AVR.h>
+#include <AP_HAL_SITL.h>
+#include <AP_HAL_Empty.h>
+#include <AP_HAL_PX4.h>
+#include <AP_HAL_Linux.h>
+#include <AP_Math.h>
+#include <Filter.h>
+#include <AP_ADC.h>
+#include <SITL.h>
+#include <AP_Compass.h>
+#include <AP_Baro.h>
+#include <AP_Notify.h>
+#include <AP_InertialSensor.h>
+#include <AP_GPS.h>
+#include <DataFlash.h>
+#include <GCS_MAVLink.h>
+#include <AP_Mission.h>
+#include <StorageManager.h>
+#include <AP_Terrain.h>
+#include <AP_Declination.h>
+#include <AP_AHRS.h>
+#include <AP_NavEKF.h>
+#include <AP_Airspeed.h>
+#include <AP_Vehicle.h>
+#include <AP_ADC_AnalogSource.h>
+#include <AP_Rally.h>
+#include <AP_BattMonitor.h>
+#include <AP_RangeFinder.h>
+
 const AP_HAL::HAL& hal = AP_HAL_BOARD_DRIVER;
+
+#define SHOW_POLES_BREAKDOWN 0
 
 static float rad_diff(float rad1, float rad2)
 {
@@ -25,14 +53,15 @@ static float rad_diff(float rad1, float rad2)
     return fabsf(diff);
 }
 
-static void check_result(float roll, float pitch, float yaw,
+static void check_result(const char *msg,
+                         float roll, float pitch, float yaw,
                          float roll2, float pitch2, float yaw2)
 {
     if (isnan(roll2) ||
         isnan(pitch2) ||
         isnan(yaw2)) {
-        hal.console->printf("NAN eulers roll=%f pitch=%f yaw=%f\n",
-                      roll, pitch, yaw);
+        hal.console->printf("%s NAN eulers roll=%f pitch=%f yaw=%f\n",
+                            msg, roll, pitch, yaw);
     }
 
     if (rad_diff(roll2,roll) > ToRad(179)) {
@@ -42,25 +71,29 @@ static void check_result(float roll, float pitch, float yaw,
         yaw2 += fmod(yaw2+PI, 2*PI);
     }
 
-    if (rad_diff(roll2,roll) > 0.01 ||
-        rad_diff(pitch2, pitch) > 0.01 ||
-        rad_diff(yaw2, yaw) > 0.01) {
+    if (rad_diff(roll2,roll) > 0.01f ||
+        rad_diff(pitch2, pitch) > 0.01f ||
+        rad_diff(yaw2, yaw) > 0.01f) {
         if (pitch >= PI/2 ||
             pitch <= -PI/2 ||
             ToDeg(rad_diff(pitch, PI/2)) < 1 ||
             ToDeg(rad_diff(pitch, -PI/2)) < 1) {
             // we expect breakdown at these poles
+#if SHOW_POLES_BREAKDOWN
             hal.console->printf_P(
-                    PSTR("breakdown eulers roll=%f/%f pitch=%f/%f yaw=%f/%f\n"),
-                          ToDeg(roll), ToDeg(roll2),
-                          ToDeg(pitch), ToDeg(pitch2),
-                          ToDeg(yaw), ToDeg(yaw2));
+                PSTR("%s breakdown eulers roll=%f/%f pitch=%f/%f yaw=%f/%f\n"),
+                msg,
+                ToDeg(roll), ToDeg(roll2),
+                ToDeg(pitch), ToDeg(pitch2),
+                ToDeg(yaw), ToDeg(yaw2));
+#endif
         } else {
             hal.console->printf_P(
-                    PSTR("incorrect eulers roll=%f/%f pitch=%f/%f yaw=%f/%f\n"),
-                          ToDeg(roll), ToDeg(roll2),
-                          ToDeg(pitch), ToDeg(pitch2),
-                          ToDeg(yaw), ToDeg(yaw2));
+                PSTR("%s incorrect eulers roll=%f/%f pitch=%f/%f yaw=%f/%f\n"),
+                msg,
+                ToDeg(roll), ToDeg(roll2),
+                ToDeg(pitch), ToDeg(pitch2),
+                ToDeg(yaw), ToDeg(yaw2));
         }
     }
 }
@@ -72,7 +105,7 @@ static void test_euler(float roll, float pitch, float yaw)
 
     m.from_euler(roll, pitch, yaw);
     m.to_euler(&roll2, &pitch2, &yaw2);
-    check_result(roll, pitch, yaw, roll2, pitch2, yaw2);
+    check_result("test_euler", roll, pitch, yaw, roll2, pitch2, yaw2);
 }
 
 #define ARRAY_LENGTH(x) (sizeof((x))/sizeof((x)[0]))
@@ -98,11 +131,25 @@ void test_matrix_eulers(void)
 static void test_quaternion(float roll, float pitch, float yaw)
 {
     Quaternion q;
+    Matrix3f m;
     float roll2, pitch2, yaw2;
 
     q.from_euler(roll, pitch, yaw);
-    q.to_euler(&roll2, &pitch2, &yaw2);
-    check_result(roll, pitch, yaw, roll2, pitch2, yaw2);
+    q.to_euler(roll2, pitch2, yaw2);
+    check_result("test_quaternion1", roll, pitch, yaw, roll2, pitch2, yaw2);
+
+    m.from_euler(roll, pitch, yaw);
+    m.to_euler(&roll2, &pitch2, &yaw2);
+    check_result("test_quaternion2", roll, pitch, yaw, roll2, pitch2, yaw2);
+
+    m.from_euler(roll, pitch, yaw);
+    q.from_rotation_matrix(m);
+    q.to_euler(roll2, pitch2, yaw2);
+    check_result("test_quaternion3", roll, pitch, yaw, roll2, pitch2, yaw2);
+
+    q.rotation_matrix(m);
+    m.to_euler(&roll2, &pitch2, &yaw2);
+    check_result("test_quaternion4", roll, pitch, yaw, roll2, pitch2, yaw2);
 }
 
 void test_quaternion_eulers(void)
@@ -122,13 +169,13 @@ void test_quaternion_eulers(void)
     test_quaternion(1, -PI/4, 1);
     test_quaternion(1, 1, -PI/4);
 
-    test_quaternion(ToRad(89), 0, 0.1);
-    test_quaternion(0, ToRad(89), 0.1);
-    test_quaternion(0.1, 0, ToRad(89));
+    test_quaternion(ToRad(89), 0, 0.1f);
+    test_quaternion(0, ToRad(89), 0.1f);
+    test_quaternion(0.1f, 0, ToRad(89));
 
-    test_quaternion(ToRad(91), 0, 0.1);
-    test_quaternion(0, ToRad(91), 0.1);
-    test_quaternion(0.1, 0, ToRad(91));
+    test_quaternion(ToRad(91), 0, 0.1f);
+    test_quaternion(0, ToRad(91), 0.1f);
+    test_quaternion(0.1f, 0, ToRad(91));
 
     for (i=0; i<N; i++)
         for (j=0; j<N; j++)
@@ -148,8 +195,8 @@ static void test_conversion(float roll, float pitch, float yaw)
     float roll3, pitch3, yaw3;
 
     q.from_euler(roll, pitch, yaw);
-    q.to_euler(&roll2, &pitch2, &yaw2);
-    check_result(roll, pitch, yaw, roll2, pitch2, yaw2);
+    q.to_euler(roll2, pitch2, yaw2);
+    check_result("test_conversion1", roll, pitch, yaw, roll2, pitch2, yaw2);
 
     q.rotation_matrix(m);
     m.to_euler(&roll2, &pitch2, &yaw2);
@@ -161,8 +208,8 @@ static void test_conversion(float roll, float pitch, float yaw)
                       roll, pitch, yaw);
     }
 
-    check_result(roll, pitch, yaw, roll2, pitch2, yaw2);
-    check_result(roll, pitch, yaw, roll3, pitch3, yaw3);
+    check_result("test_conversion2", roll, pitch, yaw, roll2, pitch2, yaw2);
+    check_result("test_conversion3", roll, pitch, yaw, roll3, pitch3, yaw3);
 }
 
 void test_conversions(void)
@@ -172,11 +219,11 @@ void test_conversions(void)
 
     hal.console->println("matrix/quaternion tests\n");
 
-    test_conversion(1, 1.1, 1.2);
-    test_conversion(1, -1.1, 1.2);
-    test_conversion(1, -1.1, -1.2);
-    test_conversion(-1, 1.1, -1.2);
-    test_conversion(-1, 1.1, 1.2);
+    test_conversion(1, 1.1f, 1.2f);
+    test_conversion(1, -1.1f, 1.2f);
+    test_conversion(1, -1.1f, -1.2f);
+    test_conversion(-1, 1.1f, -1.2f);
+    test_conversion(-1, 1.1f, 1.2f);
 
     for (i=0; i<N; i++)
         for (j=0; j<N; j++)
@@ -194,9 +241,26 @@ void test_frame_transforms(void)
 
     hal.console->println("frame transform tests\n");
 
-    q.from_euler(ToRad(90), 0, 0);
+    q.from_euler(ToRad(45), ToRad(45), ToRad(45));
+    q.normalize();
+    m.from_euler(ToRad(45), ToRad(45), ToRad(45));
+
     v2 = v = Vector3f(0, 0, 1);
     q.earth_to_body(v2);
+    hal.console->printf("%f %f %f\n", v2.x, v2.y, v2.z);
+    v2 = m * v;
+    hal.console->printf("%f %f %f\n\n", v2.x, v2.y, v2.z);
+
+    v2 = v = Vector3f(0, 1, 0);
+    q.earth_to_body(v2);
+    hal.console->printf("%f %f %f\n", v2.x, v2.y, v2.z);
+    v2 = m * v;
+    hal.console->printf("%f %f %f\n\n", v2.x, v2.y, v2.z);
+
+    v2 = v = Vector3f(1, 0, 0);
+    q.earth_to_body(v2);
+    hal.console->printf("%f %f %f\n", v2.x, v2.y, v2.z);
+    v2 = m * v;
     hal.console->printf("%f %f %f\n", v2.x, v2.y, v2.z);
 }
 
@@ -204,7 +268,7 @@ void test_frame_transforms(void)
 static float rand_num(void)
 {
     float ret = ((unsigned)random()) % 2000000;
-    return (ret - 1.0e6) / 1.0e6;
+    return (ret - 1.0e6f) / 1.0e6f;
 }
 
 void test_matrix_rotate(void)

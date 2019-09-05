@@ -11,7 +11,6 @@ static int8_t	setup_flightmodes	(uint8_t argc, const Menu::arg *argv);
 static int8_t   setup_accel_scale   (uint8_t argc, const Menu::arg *argv);
 static int8_t   setup_set           (uint8_t argc, const Menu::arg *argv);
 #endif
-static int8_t   setup_level         (uint8_t argc, const Menu::arg *argv);
 static int8_t	setup_erase			(uint8_t argc, const Menu::arg *argv);
 static int8_t	setup_compass		(uint8_t argc, const Menu::arg *argv);
 static int8_t	setup_declination	(uint8_t argc, const Menu::arg *argv);
@@ -23,7 +22,6 @@ static const struct Menu::command setup_menu_commands[] PROGMEM = {
 	{"reset", 			setup_factory},
 	{"radio",			setup_radio},
 	{"modes",			setup_flightmodes},
-	{"level",			setup_level},
 #if !defined( __AVR_ATmega1280__ )
     {"accel",           setup_accel_scale},
 #endif
@@ -90,7 +88,7 @@ setup_show(uint8_t argc, const Menu::arg *argv)
 				cliSerial->printf_P(PSTR("INT32 %s: %ld\n"), argv[1].str, (long)((AP_Int32 *)param)->get());
 				break;
 			case AP_PARAM_FLOAT:
-				cliSerial->printf_P(PSTR("FLOAT %s: %f\n"), argv[1].str, ((AP_Float *)param)->get());
+				cliSerial->printf_P(PSTR("FLOAT %s: %f\n"), argv[1].str, (double)((AP_Float *)param)->get());
 				break;
 			default:
 				cliSerial->printf_P(PSTR("Unhandled parameter type for %s: %d.\n"), argv[1].str, type);
@@ -199,7 +197,7 @@ setup_factory(uint8_t argc, const Menu::arg *argv)
 	if (('y' != c) && ('Y' != c))
 		return(-1);
 	AP_Param::erase_all();
-	cliSerial->printf_P(PSTR("\nFACTORY RESET complete - please reset APM to continue"));
+	cliSerial->printf_P(PSTR("\nFACTORY RESET complete - please reset board to continue"));
 
 	for (;;) {
 	}
@@ -341,9 +339,7 @@ setup_flightmodes(uint8_t argc, const Menu::arg *argv)
 				mode != AUTO &&
 				mode != RTL) 
 			{
-				if (mode < MANUAL)
-					mode = RTL;
-				else if (mode > RTL)
+				if (mode > RTL)
 					mode = MANUAL;
 				else
 					mode += radioInputSwitch;
@@ -420,18 +416,6 @@ setup_accel_scale(uint8_t argc, const Menu::arg *argv)
 #endif
 
 static int8_t
-setup_level(uint8_t argc, const Menu::arg *argv)
-{
-    cliSerial->println_P(PSTR("Initialising gyros"));
-    ahrs.init();
-    ins.init(AP_InertialSensor::COLD_START, 
-             ins_sample_rate);
-    ins.init_accel();
-    ahrs.set_trim(Vector3f(0, 0, 0));
-    return(0);
-}
-
-static int8_t
 setup_compass(uint8_t argc, const Menu::arg *argv)
 {
 	if (!strcmp_P(argv[1].str, PSTR("on"))) {
@@ -445,7 +429,7 @@ setup_compass(uint8_t argc, const Menu::arg *argv)
 		g.compass_enabled = false;
 
 	} else if (!strcmp_P(argv[1].str, PSTR("reset"))) {
-		compass.set_offsets(0,0,0);
+		compass.set_and_save_offsets(0,0,0,0);
 
 	} else {
 		cliSerial->printf_P(PSTR("\nOptions:[on,off,reset]\n"));
@@ -467,9 +451,13 @@ static void report_batt_monitor()
     //print_blanks(2);
     cliSerial->printf_P(PSTR("Batt Mointor\n"));
     print_divider();
-    if(battery.monitoring() == AP_BATT_MONITOR_DISABLED) cliSerial->printf_P(PSTR("Batt monitoring disabled"));
-    if(battery.monitoring() == AP_BATT_MONITOR_VOLTAGE_ONLY) cliSerial->printf_P(PSTR("Monitoring batt volts"));
-    if(battery.monitoring() == AP_BATT_MONITOR_VOLTAGE_AND_CURRENT) cliSerial->printf_P(PSTR("Monitoring volts and current"));
+    if (battery.num_instances() == 0) {
+        cliSerial->printf_P(PSTR("Batt monitoring disabled"));
+    } else if (!battery.has_current()) {
+        cliSerial->printf_P(PSTR("Monitoring batt volts"));
+    } else {
+        cliSerial->printf_P(PSTR("Monitoring volts and current"));
+    }
     print_blanks(2);
 }
 static void report_radio()
@@ -518,36 +506,19 @@ static void report_compass()
 	//print_blanks(2);
 	cliSerial->printf_P(PSTR("Compass: "));
 
-    switch (compass.product_id) {
-    case AP_COMPASS_TYPE_HMC5883L:
-        cliSerial->println_P(PSTR("HMC5883L"));
-        break;
-    case AP_COMPASS_TYPE_HMC5843:
-        cliSerial->println_P(PSTR("HMC5843"));
-        break;
-    case AP_COMPASS_TYPE_HIL:
-        cliSerial->println_P(PSTR("HIL"));
-        break;
-    default:
-        cliSerial->println_P(PSTR("??"));
-        break;
-    }
-
-	print_divider();
-
 	print_enabled(g.compass_enabled);
 
 	// mag declination
 	cliSerial->printf_P(PSTR("Mag Declination: %4.4f\n"),
-							degrees(compass.get_declination()));
+							(double)degrees(compass.get_declination()));
 
 	Vector3f offsets = compass.get_offsets();
 
 	// mag offsets
 	cliSerial->printf_P(PSTR("Mag offsets: %4.4f, %4.4f, %4.4f\n"),
-							offsets.x,
-							offsets.y,
-							offsets.z);
+                            (double)offsets.x,
+                            (double)offsets.y,
+                            (double)offsets.z);
 	print_blanks(2);
 }
 
@@ -571,9 +542,9 @@ static void
 print_PID(PID * pid)
 {
 	cliSerial->printf_P(PSTR("P: %4.3f, I:%4.3f, D:%4.3f, IMAX:%ld\n"),
-					pid->kP(),
-					pid->kI(),
-					pid->kD(),
+                    (double)pid->kP(),
+                    (double)pid->kI(),
+                    (double)pid->kD(),
 					(long)pid->imax());
 }
 
@@ -652,11 +623,8 @@ radio_input_switch(void)
 
 static void zero_eeprom(void)
 {
-	uint8_t b = 0;
 	cliSerial->printf_P(PSTR("\nErasing EEPROM\n"));
-	for (uint16_t i = 0; i < EEPROM_MAX_ADDR; i++) {
-		hal.storage->write_byte(i, b);
-	}
+    StorageManager::erase();
 	cliSerial->printf_P(PSTR("done\n"));
 }
 

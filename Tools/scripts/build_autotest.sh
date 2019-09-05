@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export PATH=$HOME/.local/bin:/usr/local/bin:$HOME/prefix/bin:$HOME/APM/px4/gcc-arm-none-eabi-4_6-2012q2/bin:$PATH
+export PATH=$HOME/.local/bin:/usr/local/bin:$HOME/prefix/bin:$HOME/APM/px4/gcc-arm-none-eabi-4_7-2014q2/bin:$PATH
 export PYTHONUNBUFFERED=1
 export PYTHONPATH=$HOME/APM
 
@@ -8,10 +8,24 @@ cd $HOME/APM || exit 1
 
 test -n "$FORCEBUILD" || {
 (cd APM && git fetch > /dev/null 2>&1)
+
 newtags=$(cd APM && git fetch --tags | wc -l)
 oldhash=$(cd APM && git rev-parse origin/master)
 newhash=$(cd APM && git rev-parse HEAD)
-if [ "$oldhash" = "$newhash" -a "$newtags" = "0" ]; then
+
+newtagspx4=$(cd PX4Firmware && git fetch --tags | wc -l)
+oldhashpx4=$(cd PX4Firmware && git rev-parse origin/master)
+newhashpx4=$(cd PX4Firmware && git rev-parse HEAD)
+
+newtagsnuttx=$(cd PX4NuttX && git fetch --tags | wc -l)
+oldhashnuttx=$(cd PX4NuttX && git rev-parse origin/master)
+newhashnuttx=$(cd PX4NuttX && git rev-parse HEAD)
+
+newtagsuavcan=$(cd uavcan && git fetch --tags | wc -l)
+oldhashuavcan=$(cd uavcan && git rev-parse origin/master)
+newhashuavcan=$(cd uavcan && git rev-parse HEAD)
+
+if [ "$oldhash" = "$newhash" -a "$newtags" = "0" -a "$oldhashpx4" = "$newhashpx4" -a "$newtagspx4" = "0" -a "$oldhashnuttx" = "$newhashnuttx" -a "$newtagsnuttx" = "0" -a "$oldhashuavcan" = "$newhashuavcan" -a "$newtagsuavcan" = "0" ]; then
     echo "no change $oldhash $newhash `date`" >> build.log
     exit 0
 fi
@@ -85,12 +99,33 @@ rsync -a APM/Tools/autotest/web-firmware/ buildlogs/binaries/
 pushd PX4Firmware
 git fetch origin
 git reset --hard origin/master
+for v in ArduPlane ArduCopter APMrover2; do
+    git tag -d $v-beta || true
+    git tag -d $v-stable || true
+done
+git fetch origin --tags
 git show
 popd
 
 pushd PX4NuttX
 git fetch origin
 git reset --hard origin/master
+for v in ArduPlane ArduCopter APMrover2; do
+    git tag -d $v-beta || true
+    git tag -d $v-stable || true
+done
+git fetch origin --tags
+git show
+popd
+
+pushd uavcan
+git fetch origin
+git reset --hard origin/master
+for v in ArduPlane ArduCopter APMrover2; do
+    git tag -d $v-beta || true
+    git tag -d $v-stable || true
+done
+git fetch origin --tags
 git show
 popd
 
@@ -130,7 +165,7 @@ for d in ArduPlane ArduCopter APMrover2; do
 done
 
 mkdir -p "buildlogs/history/$hdate"
-(cd buildlogs && cp -f *.txt *.flashlog *.tlog *.km[lz] *.gpx *.html *.png "history/$hdate/")
+(cd buildlogs && cp -f *.txt *.flashlog *.tlog *.km[lz] *.gpx *.html *.png *.bin *.BIN *.elf "history/$hdate/")
 echo $githash > "buildlogs/history/$hdate/githash.txt"
 
 (cd APM && Tools/scripts/build_parameters.sh)
@@ -139,6 +174,9 @@ echo $githash > "buildlogs/history/$hdate/githash.txt"
 
 killall -9 JSBSim || /bin/true
 
-timelimit 6500 APM/Tools/autotest/autotest.py --timeout=6000 > buildlogs/autotest-output.txt 2>&1
+# raise core limit
+ulimit -c 10000000
+
+timelimit 12000 APM/Tools/autotest/autotest.py --timeout=11500 > buildlogs/autotest-output.txt 2>&1
 
 ) >> build.log 2>&1

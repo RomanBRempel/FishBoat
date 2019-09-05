@@ -8,6 +8,7 @@
 #include <AP_HAL.h>
 #include <AP_HAL_AVR.h>
 #include <AP_Param.h>
+#include <StorageManager.h>
 #include <AP_Math.h>
 #include <Filter.h>
 #include <DerivativeFilter.h>
@@ -28,7 +29,7 @@ static float noise(void)
 void loop()
 {
     hal.scheduler->delay(50);
-    float t = hal.scheduler->millis()*1.0e-3;
+    float t = hal.scheduler->millis()*1.0e-3f;
     float s = sinf(t);
     //s += noise();
     uint32_t t1 = hal.scheduler->micros();

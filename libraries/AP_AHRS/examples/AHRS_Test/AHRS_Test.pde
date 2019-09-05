@@ -12,6 +12,7 @@
 #include <AP_InertialSensor.h>
 #include <AP_ADC.h>
 #include <AP_ADC_AnalogSource.h>
+#include <AP_Baro.h>            // ArduPilot Mega Barometer Library
 #include <AP_GPS.h>
 #include <AP_AHRS.h>
 #include <AP_Compass.h>
@@ -19,38 +20,46 @@
 #include <AP_Airspeed.h>
 #include <AP_Baro.h>
 #include <GCS_MAVLink.h>
+#include <AP_Mission.h>
+#include <StorageManager.h>
+#include <AP_Terrain.h>
 #include <Filter.h>
 #include <SITL.h>
 #include <AP_Buffer.h>
 #include <AP_Notify.h>
 #include <AP_Vehicle.h>
 #include <DataFlash.h>
+#include <AP_NavEKF.h>
+#include <AP_Rally.h>
+#include <AP_Scheduler.h>
 
 #include <AP_HAL_AVR.h>
-#include <AP_HAL_AVR_SITL.h>
+#include <AP_HAL_SITL.h>
 #include <AP_HAL_Empty.h>
+#include <AP_HAL_PX4.h>
+#include <AP_BattMonitor.h>
+#include <AP_SerialManager.h>
+#include <RC_Channel.h>
+#include <AP_RangeFinder.h>
 
 const AP_HAL::HAL& hal = AP_HAL_BOARD_DRIVER;
 
-#if CONFIG_HAL_BOARD == HAL_BOARD_APM2
-AP_InertialSensor_MPU6000 ins;
-#elif CONFIG_HAL_BOARD == HAL_BOARD_APM1
-AP_ADC_ADS7844 adc;
-AP_InertialSensor_Oilpan ins( &adc );
-#else
-AP_InertialSensor_HIL ins;
+// INS and Baro declaration
+AP_InertialSensor ins;
+
+#if CONFIG_HAL_BOARD == HAL_BOARD_APM1
+AP_ADC_ADS7844 apm1_adc;
 #endif
 
-AP_Compass_HMC5843 compass;
+Compass compass;
 
-GPS *g_gps;
-
-AP_GPS_Auto g_gps_driver(&g_gps);
+AP_GPS gps;
+AP_Baro baro;
+AP_SerialManager serial_manager;
 
 // choose which AHRS system to use
-AP_AHRS_DCM  ahrs(ins, g_gps);
+AP_AHRS_DCM  ahrs(ins, baro, gps);
 
-AP_Baro_HIL barometer;
 
 
 #define HIGH 1
@@ -61,15 +70,14 @@ void setup(void)
 
 #ifdef APM2_HARDWARE
     // we need to stop the barometer from holding the SPI bus
-    hal.gpio->pinMode(40, GPIO_OUTPUT);
+    hal.gpio->pinMode(40, HAL_HAL_GPIO_OUTPUT);
     hal.gpio->write(40, HIGH);
 #endif
 
     ins.init(AP_InertialSensor::COLD_START, 
 			 AP_InertialSensor::RATE_100HZ);
-    ins.init_accel();
-
     ahrs.init();
+    serial_manager.init();
 
     if( compass.init() ) {
         hal.console->printf("Enabling compass\n");
@@ -77,10 +85,7 @@ void setup(void)
     } else {
         hal.console->printf("No compass detected\n");
     }
-    g_gps = &g_gps_driver;
-#if WITH_GPS
-    g_gps->init(hal.uartB);
-#endif
+    gps.init(NULL, serial_manager);
 }
 
 void loop(void)
@@ -120,8 +125,8 @@ void loop(void)
                         ToDeg(drift.x),
                         ToDeg(drift.y),
                         ToDeg(drift.z),
-                        compass.use_for_yaw() ? ToDeg(heading) : 0.0,
-                        (1.0e6*counter)/(now-last_print));
+                        compass.use_for_yaw() ? ToDeg(heading) : 0.0f,
+                        (1.0e6f*counter)/(now-last_print));
         last_print = now;
         counter = 0;
     }
