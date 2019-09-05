@@ -128,8 +128,8 @@ start_command(const AP_Mission::Mission_Command& cmd)
 static void exit_mission()
 {
     if (control_mode == AUTO) {
-        gcs_send_text_fmt(PSTR("No commands. Can't set AUTO - setting HOLD"));
-        set_mode(HOLD);
+        gcs_send_text_fmt(PSTR("No commands. Can't set AUTO - setting MANUAL"));
+        set_mode(MANUAL);
     }
 }
 
